@@ -1,25 +1,64 @@
 package com.example.bioguard_wearos.data.repository
 
+import android.content.Context
 import android.util.Log
 import com.example.bioguard_wearos.data.local.BioGuardPreferences
-import com.example.bioguard_wearos.data.local.db.BiometricReadingEntity
-import com.example.bioguard_wearos.data.remote.api.BioGuardApi
-import com.example.bioguard_wearos.data.remote.dto.AlertaDto
-import com.example.bioguard_wearos.data.remote.dto.EventoMetabolicoDto
-import com.example.bioguard_wearos.data.remote.dto.HeartbeatDto
-import com.example.bioguard_wearos.data.remote.dto.LecturaBatchDto
-import com.example.bioguard_wearos.data.remote.dto.LecturaSensoresDto
-import com.example.bioguard_wearos.data.remote.dto.TrackingBatchDto
-import com.example.bioguard_wearos.data.remote.dto.TrackingDto
-import com.example.bioguard_wearos.data.remote.dto.VincularDispositivoDto
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
 import com.example.bioguard_wearos.domain.repository.SyncRepository
+import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@Serializable
+private data class PhoneReadingRequest(
+    val pulsoBpm: Double,
+    val temperaturaC: Double,
+    val sudoracionGsr: Double,
+    val hrv: Double? = null,
+    val spo2: Double? = null,
+    val timestamp: String,
+    val nivelRiesgo: String? = null,
+    val isSimulated: Boolean = false
+)
+
+@Serializable
+private data class WatchEventDto(
+    val bpm: Float,
+    val temperatura: Float,
+    val sudoracionGsr: Float,
+    val nivelRiesgo: String,
+    val timestamp: Long,
+    val tipoEvento: String,
+    val descripcion: String
+)
+
+@Serializable
+private data class WatchAlertDto(
+    val tipoAlerta: String,
+    val mensaje: String,
+    val nivelRiesgo: String,
+    val timestamp: Long,
+    val bpm: Float,
+    val temperatura: Float,
+    val sudoracionGsr: Float
+)
+
+@Serializable
+private data class PhoneHeartbeatRequest(
+    val pacienteId: String? = null,
+    val bateria: Int? = null,
+    val sensoresActivos: List<String>? = null,
+    val nivelRiesgo: String? = null
+)
+
 @Singleton
 class SyncRepositoryImpl @Inject constructor(
-    private val api: BioGuardApi,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
     private val readingRepository: BiometricReadingRepository,
     private val preferences: BioGuardPreferences
 ) : SyncRepository {
@@ -28,36 +67,39 @@ class SyncRepositoryImpl @Inject constructor(
         private const val TAG = "BIOGUARD_SYNC"
     }
 
-    override suspend fun loginCodigo(codigo: String): Result<String> {
+    private suspend fun sendMessageToPhone(path: String, payloadJson: String, retryCount: Int = 0): Result<Unit> {
         return try {
-            val result = api.loginCodigo(codigo)
-            result.onSuccess { response ->
-                preferences.saveAuthToken(response.token, response.refreshToken, response.expiracion)
-                Log.d(TAG, "Login OK: token guardado, expira en ${response.expiracion}")
-            }.onFailure { ex ->
-                Log.w(TAG, "Login falló [${ex::class.simpleName}]: ${ex.message}")
+            val nodeClient = Wearable.getNodeClient(context)
+            val messageClient = Wearable.getMessageClient(context)
+            val nodes = nodeClient.connectedNodes.await()
+            if (nodes.isEmpty()) {
+                Log.w(TAG, "No hay teléfonos conectados para enviar mensaje a $path")
+                return Result.failure(Exception("Teléfono no conectado"))
             }
-            result.map { it.token }
+            for (node in nodes) {
+                messageClient.sendMessage(node.id, path, payloadJson.toByteArray(Charsets.UTF_8)).await()
+            }
+            Log.d(TAG, "Mensaje enviado exitosamente a $path")
+            Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Excepción en loginCodigo [${e::class.simpleName}]: ${e.message}", e)
-            Result.failure(e)
+            Log.w(TAG, "Error enviando mensaje a $path (intento ${retryCount + 1}): ${e.message}")
+            if (retryCount < 3) {
+                delay((1000L * (1L shl retryCount)))
+                sendMessageToPhone(path, payloadJson, retryCount + 1)
+            } else {
+                Result.failure(e)
+            }
         }
     }
 
+    override suspend fun loginCodigo(codigo: String): Result<String> {
+        Log.w(TAG, "loginCodigo no soportado de forma directa en Wearable en arquitectura local-first")
+        return Result.failure(Exception("Debe autenticarse en la app móvil"))
+    }
+
     override suspend fun refresh(refreshToken: String): Result<String> {
-        return try {
-            val result = api.refresh(refreshToken)
-            result.onSuccess { response ->
-                preferences.saveAuthToken(response.token, response.refreshToken, response.expiracion)
-                Log.d(TAG, "Token refrescado OK, nueva expiración: ${response.expiracion}")
-            }.onFailure { ex ->
-                Log.w(TAG, "Refresh falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result.map { it.token }
-        } catch (e: Exception) {
-            Log.e(TAG, "Excepción en refresh [${e::class.simpleName}]: ${e.message}", e)
-            Result.failure(e)
-        }
+        Log.w(TAG, "refresh no soportado de forma directa en Wearable en arquitectura local-first")
+        return Result.failure(Exception("Debe refrescar sesión en la app móvil"))
     }
 
     override suspend fun vincularDispositivo(
@@ -66,63 +108,38 @@ class SyncRepositoryImpl @Inject constructor(
         modelo: String,
         sistemaOperativo: String
     ): Result<Pair<String, String>> {
-        return try {
-            val dto = VincularDispositivoDto(
-                direccionMac = direccionMac,
-                uuidDispositivo = uuidDispositivo,
-                modelo = modelo,
-                sistemaOperativo = sistemaOperativo
-            )
-            val result = api.vincularDispositivo(dto)
-            result.onSuccess { response ->
-                preferences.saveDeviceBinding(response.dispositivoId, response.pacienteId)
-                Log.d(TAG, "Dispositivo vinculado OK: id=${response.dispositivoId}, paciente=${response.pacienteId}")
-            }.onFailure { ex ->
-                Log.w(TAG, "Vinculación falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result.map { Pair(it.dispositivoId, it.pacienteId) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Excepción en vincularDispositivo [${e::class.simpleName}]: ${e.message}", e)
-            Result.failure(e)
-        }
+        Log.w(TAG, "vincularDispositivo no soportado de forma directa en Wearable")
+        return Result.failure(Exception("Vincular dispositivo a través de la app móvil"))
     }
 
     override suspend fun obtenerPaciente(): Result<Triple<String, Float, Float>> {
-        return try {
-            val result = api.obtenerPaciente()
-            result.onFailure { ex ->
-                Log.w(TAG, "Obtener paciente falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result.map { Triple(it.nombre, it.peso, it.estatura) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Excepción en obtenerPaciente [${e::class.simpleName}]: ${e.message}", e)
-            Result.failure(e)
-        }
+        Log.w(TAG, "obtenerPaciente no soportado de forma directa en Wearable")
+        return Result.failure(Exception("Cargando perfil del paciente desde el móvil localmente"))
     }
 
     override suspend fun enviarLecturaLive(
         bpm: Float,
         temperatura: Float,
         gsr: Float,
-        nivelRiesgo: String
+        nivelRiesgo: String,
+        rmssd: Double?,
+        sdnn: Double?,
+        isSimulated: Boolean
     ): Result<Unit> {
         return try {
-            val dto = LecturaSensoresDto(
-                bpm = bpm,
-                temperatura = temperatura,
-                sudoracionGsr = gsr,
+            val request = PhoneReadingRequest(
+                pulsoBpm = bpm.toDouble(),
+                temperaturaC = temperatura.toDouble(),
+                sudoracionGsr = gsr.toDouble(),
+                hrv = rmssd ?: sdnn,
+                timestamp = Instant.now().toString(),
                 nivelRiesgo = nivelRiesgo,
-                timestamp = System.currentTimeMillis()
+                isSimulated = isSimulated
             )
-            val result = api.enviarLectura(dto)
-            result.onSuccess {
-                Log.d(TAG, "Lectura live enviada OK: BPM=$bpm, Temp=$temperatura")
-            }.onFailure { ex ->
-                Log.w(TAG, "Lectura live falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result
+            val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), request)
+            sendMessageToPhone("/sensors/readings", jsonString)
         } catch (e: Exception) {
-            Log.e(TAG, "Excepción en enviarLecturaLive [${e::class.simpleName}]: ${e.message}", e)
+            Log.w(TAG, "Excepción en enviarLecturaLive [${e::class.simpleName}]: ${e.message}")
             Result.failure(e)
         }
     }
@@ -132,24 +149,8 @@ class SyncRepositoryImpl @Inject constructor(
         longitud: Double,
         precision: Float
     ): Result<Unit> {
-        return try {
-            val dto = TrackingDto(
-                latitud = latitud,
-                longitud = longitud,
-                precision = precision,
-                timestamp = System.currentTimeMillis()
-            )
-            val result = api.enviarTracking(dto)
-            result.onSuccess {
-                Log.d(TAG, "Tracking enviado OK: lat=$latitud, lng=$longitud")
-            }.onFailure { ex ->
-                Log.w(TAG, "Tracking falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "Excepción en enviarTracking [${e::class.simpleName}]: ${e.message}", e)
-            Result.failure(e)
-        }
+        Log.w(TAG, "enviarTracking no soportado de forma directa en Wearable")
+        return Result.success(Unit)
     }
 
     override suspend fun enviarHeartbeat(
@@ -157,20 +158,15 @@ class SyncRepositoryImpl @Inject constructor(
         sensoresActivos: List<String>
     ): Result<Unit> {
         return try {
-            val dto = HeartbeatDto(
+            val req = PhoneHeartbeatRequest(
                 bateria = bateria,
                 sensoresActivos = sensoresActivos,
-                timestamp = System.currentTimeMillis()
+                nivelRiesgo = null
             )
-            val result = api.enviarHeartbeat(dto)
-            result.onSuccess {
-                Log.d(TAG, "Heartbeat enviado OK: batería=$bateria%, sensores=${sensoresActivos.size}")
-            }.onFailure { ex ->
-                Log.w(TAG, "Heartbeat falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result
+            val jsonString = Json.encodeToString(PhoneHeartbeatRequest.serializer(), req)
+            sendMessageToPhone("/sensors/heartbeat", jsonString)
         } catch (e: Exception) {
-            Log.e(TAG, "Excepción en enviarHeartbeat [${e::class.simpleName}]: ${e.message}", e)
+            Log.w(TAG, "Error enviando heartbeat: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -182,27 +178,29 @@ class SyncRepositoryImpl @Inject constructor(
             return Result.success(0)
         }
 
-        Log.d(TAG, "Preparando batch de ${unsynced.size} lecturas para sincronizar")
-
-        val batchDto = LecturaBatchDto(
-            lecturas = unsynced.map { it.toLecturaSensoresDto() }
-        )
-
-        return try {
-            val result = api.enviarLecturaBatch(batchDto)
-            result.onSuccess {
-                val ids = unsynced.map { it.id }
-                readingRepository.markAsSynced(ids)
-                Log.d(TAG, "Batch sync OK: ${ids.size} lecturas marcadas como synced en DB local")
-            }.onFailure { ex ->
-                Log.w(TAG, "Batch sync falló [${ex::class.simpleName}]: ${ex.message}")
-                Log.d(TAG, "Las ${unsynced.size} lecturas permanecerán como pending para el próximo ciclo")
+        Log.d(TAG, "Preparando sincronización de ${unsynced.size} lecturas locales con el teléfono")
+        var count = 0
+        for (reading in unsynced) {
+            val req = PhoneReadingRequest(
+                pulsoBpm = reading.bpm.toDouble(),
+                temperaturaC = reading.temperature.toDouble(),
+                sudoracionGsr = reading.gsr.toDouble(),
+                hrv = reading.rmssd.toDouble().takeIf { it > 0 },
+                timestamp = Instant.ofEpochMilli(reading.timestamp).toString(),
+                nivelRiesgo = reading.riskLevel.label,
+                isSimulated = reading.isSimulated
+            )
+            val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), req)
+            val res = sendMessageToPhone("/sensors/readings", jsonString)
+            if (res.isSuccess) {
+                readingRepository.markAsSynced(listOf(reading.id))
+                count++
+            } else {
+                Log.w(TAG, "Fallo al enviar lectura ${reading.id} al teléfono. Abortando ciclo.")
+                break
             }
-            result.map { unsynced.size }
-        } catch (e: Exception) {
-            Log.e(TAG, "Excepción en syncPendingReadings [${e::class.simpleName}]: ${e.message}", e)
-            Result.failure(e)
         }
+        return Result.success(count)
     }
 
     override suspend fun enviarEvento(
@@ -214,7 +212,7 @@ class SyncRepositoryImpl @Inject constructor(
         descripcion: String
     ): Result<Unit> {
         return try {
-            val dto = EventoMetabolicoDto(
+            val dto = WatchEventDto(
                 bpm = bpm,
                 temperatura = temperatura,
                 sudoracionGsr = gsr,
@@ -223,13 +221,10 @@ class SyncRepositoryImpl @Inject constructor(
                 tipoEvento = tipoEvento,
                 descripcion = descripcion
             )
-            val result = api.enviarEvento(dto)
-            result.onFailure { ex ->
-                Log.w(TAG, "Evento metabólico falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result
+            val jsonString = Json.encodeToString(WatchEventDto.serializer(), dto)
+            sendMessageToPhone("/sensors/events", jsonString)
         } catch (e: Exception) {
-            Log.e(TAG, "Excepción en enviarEvento [${e::class.simpleName}]: ${e.message}", e)
+            Log.w(TAG, "Excepción en enviarEvento [${e::class.simpleName}]: ${e.message}")
             Result.failure(e)
         }
     }
@@ -243,7 +238,7 @@ class SyncRepositoryImpl @Inject constructor(
         gsr: Float
     ): Result<Unit> {
         return try {
-            val dto = AlertaDto(
+            val dto = WatchAlertDto(
                 tipoAlerta = tipoAlerta,
                 mensaje = mensaje,
                 nivelRiesgo = nivelRiesgo,
@@ -252,24 +247,11 @@ class SyncRepositoryImpl @Inject constructor(
                 temperatura = temperatura,
                 sudoracionGsr = gsr
             )
-            val result = api.enviarAlerta(dto)
-            result.onFailure { ex ->
-                Log.w(TAG, "Alerta falló [${ex::class.simpleName}]: ${ex.message}")
-            }
-            result
+            val jsonString = Json.encodeToString(WatchAlertDto.serializer(), dto)
+            sendMessageToPhone("/sensors/alerts", jsonString)
         } catch (e: Exception) {
-            Log.e(TAG, "Excepción en enviarAlerta [${e::class.simpleName}]: ${e.message}", e)
+            Log.w(TAG, "Excepción en enviarAlerta [${e::class.simpleName}]: ${e.message}")
             Result.failure(e)
         }
-    }
-
-    private fun BiometricReadingEntity.toLecturaSensoresDto(): LecturaSensoresDto {
-        return LecturaSensoresDto(
-            bpm = bpm,
-            temperatura = temperature,
-            sudoracionGsr = gsr,
-            nivelRiesgo = riskLevel.name,
-            timestamp = timestamp
-        )
     }
 }

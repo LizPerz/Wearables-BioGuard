@@ -2,6 +2,7 @@ package com.example.bioguard_wearos.data.remote
 
 import android.util.Log
 import com.example.bioguard_wearos.data.local.BioGuardPreferences
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -16,8 +17,9 @@ class AuthInterceptor(
 
     companion object {
         private const val TAG = "BIOGUARD_AUTH"
-        private const val BASE_URL = "https://bioguard-api-lkvnq.ondigitalocean.app"
     }
+
+    private val baseUrl: String = com.example.bioguard_wearos.BuildConfig.BASE_URL
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -27,7 +29,7 @@ class AuthInterceptor(
             return chain.proceed(request)
         }
 
-        val token = runBlocking { preferences.getJwtToken() }
+        val token = runBlocking(Dispatchers.IO) { preferences.getJwtToken() }
         val authenticatedRequest = if (!token.isNullOrEmpty()) {
             request.newBuilder()
                 .addHeader("Authorization", "Bearer $token")
@@ -42,16 +44,16 @@ class AuthInterceptor(
             response.close()
             Log.w(TAG, "401 en $path, intentando refresh...")
 
-            val refreshToken = runBlocking { preferences.getRefreshToken() }
+            val refreshToken = runBlocking(Dispatchers.IO) { preferences.getRefreshToken() }
             if (refreshToken.isNullOrEmpty()) {
                 Log.w(TAG, "No hay refresh token, cerrando sesión")
-                runBlocking { preferences.clearAuthToken() }
+                runBlocking(Dispatchers.IO) { preferences.clearAuthToken() }
                 return chain.proceed(request)
             }
 
             val refreshBody = """{"refreshToken":"$refreshToken"}"""
             val refreshRequest = Request.Builder()
-                .url("$BASE_URL/api/Auth/refresh")
+                .url("$baseUrl/api/Auth/refresh")
                 .post(refreshBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
@@ -64,11 +66,11 @@ class AuthInterceptor(
                 if (body != null) {
                     try {
                         val json = JSONObject(body)
-                        val newToken = json.getString("token")
+                        val newToken = json.getString("accessToken")
                         val newRefreshToken = json.getString("refreshToken")
-                        val expiracion = json.getLong("expiracion")
+                        val expiracion = json.optLong("expiracion", 0L)
 
-                        runBlocking {
+                        runBlocking(Dispatchers.IO) {
                             preferences.saveAuthToken(newToken, newRefreshToken, expiracion)
                         }
                         Log.d(TAG, "Refresh OK, reintentando request")
@@ -79,7 +81,7 @@ class AuthInterceptor(
                             .build()
                         return chain.proceed(retryRequest)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error parseando refresh: ${e.message}")
+                        Log.w(TAG, "Error parseando refresh: ${e.message}")
                     }
                 }
             } else {
@@ -87,7 +89,7 @@ class AuthInterceptor(
             }
 
             Log.w(TAG, "Refresh falló, cerrando sesión")
-            runBlocking { preferences.clearAuthToken() }
+            runBlocking(Dispatchers.IO) { preferences.clearAuthToken() }
         }
 
         return response

@@ -19,7 +19,10 @@ interface SyncRepository {
         bpm: Float,
         temperatura: Float,
         gsr: Float,
-        nivelRiesgo: String
+        nivelRiesgo: String,
+        rmssd: Double? = null,
+        sdnn: Double? = null,
+        isSimulated: Boolean = false
     ): Result<Unit>
 
     suspend fun enviarTracking(

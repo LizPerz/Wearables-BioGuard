@@ -5,6 +5,7 @@ import com.example.bioguard_wearos.domain.model.SensorData
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
 import com.example.bioguard_wearos.domain.risk.BiometricInput
 import com.example.bioguard_wearos.domain.risk.BiometricRiskEngine
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -53,9 +54,17 @@ class TelemetrySaveScheduler(
             temperature = data.temperature,
             gsr = data.gsr,
             bmi = DEFAULT_BMI,
-            riskLevel = assessment.level
+            rmssd = data.rmssd,
+            sdnn = data.sdnn,
+            riskLevel = assessment.level,
+            isSimulated = data.isSimulated,
+            synced = false
         )
-        readingRepository.saveReading(entity)
+        try {
+            readingRepository.saveReading(entity)
+        } catch (e: Exception) {
+            Log.w("BIOGUARD", "Error guardando lectura: ${e.message}")
+        }
     }
 
     companion object {

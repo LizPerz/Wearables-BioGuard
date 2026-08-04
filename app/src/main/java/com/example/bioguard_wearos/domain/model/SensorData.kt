@@ -6,7 +6,9 @@ data class SensorData(
     val gsr: Float = 0f,
     val rmssd: Float = 0f,
     val sdnn: Float = 0f,
-    val stressLabel: String = ""
+    val stressLabel: String = "",
+    val isSimulated: Boolean = false,
+    val nivelRiesgo: String = ""
 ) {
     val hrFraction: Float
         get() = if (bpm > 0f) ((bpm - HR_MIN) / (HR_MAX - HR_MIN)).coerceIn(0f, 1f) else 0.05f

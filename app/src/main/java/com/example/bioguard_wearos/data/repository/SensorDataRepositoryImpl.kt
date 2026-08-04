@@ -28,6 +28,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,6 +109,7 @@ class SensorDataRepositoryImpl(
                 }
             }
         }
+
     }
 
     override fun startSensors() {
@@ -125,8 +127,12 @@ class SensorDataRepositoryImpl(
     override fun stopSensors() {
         stopHeartRateMeasure()
         temperatureProvider.stop()
+        bpmSimulationJob?.cancel()
+        bpmSimulationJob = null
         heartRateStarted = false
+        hasRealBpmData = false
         telemetryScheduler?.stop()
+        scope.cancel()
     }
 
     private fun startPeriodicSave() {
@@ -134,6 +140,10 @@ class SensorDataRepositoryImpl(
     }
 
     private fun processHeartRate(bpm: Float) {
+        processHeartRate(bpm, isSimulated = false)
+    }
+
+    private fun processHeartRate(bpm: Float, isSimulated: Boolean) {
         hrvCalculator.addIbi(bpm)
         val rmssd = hrvCalculator.computeRmssd()
         val sdnn = hrvCalculator.computeSdnn()
@@ -146,14 +156,16 @@ class SensorDataRepositoryImpl(
                 gsr = stressUs,
                 rmssd = rmssd,
                 sdnn = sdnn,
-                stressLabel = label
+                stressLabel = label,
+                isSimulated = isSimulated,
+                nivelRiesgo = if (isSimulated) "Simulado" else label
             )
         }
+        _sensorAvailability.value = _sensorAvailability.value.copy(heartRateAvailable = true)
     }
 
     private fun startHrvUpdater() {
         scope.launch {
-            delay(3000)
             Log.d("BIOGUARD", "Actualizador HRV iniciado")
             while (isActive) {
                 val currentBpm = _sensorData.value.bpm
@@ -168,7 +180,9 @@ class SensorDataRepositoryImpl(
                             gsr = stressUs,
                             rmssd = rmssd,
                             sdnn = sdnn,
-                            stressLabel = label
+                            stressLabel = label,
+                            nivelRiesgo = label,
+                            isSimulated = false
                         )
                     }
                     _sensorAvailability.value = _sensorAvailability.value.copy(gsrAvailable = true)
@@ -185,15 +199,15 @@ class SensorDataRepositoryImpl(
         bpmSimulationJob = scope.launch {
             delay(5000)
             if (hasRealBpmData) return@launch
-            Log.d("BIOGUARD", "Sin datos de BPM reales tras 5s, iniciando simulaci\u00f3n de respaldo")
+            Log.d("BIOGUARD", "Sin datos de BPM reales tras 5s, iniciando simulación de respaldo")
             var simBpm = 70f
             while (isActive && !hasRealBpmData) {
-                processHeartRate(simBpm)
+                processHeartRate(simBpm, isSimulated = true)
                 simBpm += (Math.random().toFloat() * 6f - 3f)
                 simBpm = simBpm.coerceIn(55f, 100f)
                 delay(1500)
             }
-            Log.d("BIOGUARD", "Simulaci\u00f3n BPM detenida, datos reales recibidos")
+            Log.d("BIOGUARD", "Simulación BPM detenida, datos reales recibidos")
         }
     }
 

@@ -31,7 +31,7 @@ class BioGuardApiImpl @Inject constructor(
 ) : BioGuardApi {
 
     companion object {
-        private const val BASE_URL = "https://bioguard-api-lkvnq.ondigitalocean.app"
+        private val BASE_URL = com.example.bioguard_wearos.BuildConfig.BASE_URL
     }
 
     override suspend fun loginCodigo(codigo: String): Result<LoginResponseDto> {

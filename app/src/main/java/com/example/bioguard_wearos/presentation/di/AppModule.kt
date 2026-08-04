@@ -58,10 +58,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSyncRepository(
-        api: BioGuardApi,
+        @ApplicationContext context: Context,
         readingRepository: BiometricReadingRepository,
         preferences: BioGuardPreferences
     ): SyncRepository {
-        return SyncRepositoryImpl(api, readingRepository, preferences)
+        return SyncRepositoryImpl(context, readingRepository, preferences)
     }
 }
