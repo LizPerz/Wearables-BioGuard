@@ -41,6 +41,8 @@ object NetworkModule {
             engine {
                 config {
                     addInterceptor(authInterceptor)
+                    // DevSecOps hardening: certificado pinning del backend.
+                    certificatePinner(TlsSecurity.certificatePinner)
                     connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                     readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                     writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)

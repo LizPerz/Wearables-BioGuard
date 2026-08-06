@@ -286,7 +286,7 @@ class SensorDataRepositoryImpl(
             try {
                 val future = client.unregisterMeasureCallbackAsync(DataType.HEART_RATE_BPM, heartRateCallback)
                 Futures.addCallback(future, object : FutureCallback<Void> {
-                    override fun onSuccess(result: Void?) {
+                    override fun onSuccess(result: Void) {
                         Log.d("BIOGUARD", "Health Services MeasureCallback desregistrado")
                     }
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OWASP Dependency-Check: exenciones documentadas de vulnerabilidades.
+  Mantener aquí únicamente falso-positivos verificados y CVEs aceptados
+  como riesgo con su justificación.
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!-- Ejemplo:
+    <suppress until="2026-12-31Z">
+        <notes>Falso positivo: <descripción del motivo></notes>
+        <packageUrl regex="true">^pkg:maven/...</packageUrl>
+        <cve>CVE-0000-00000</cve>
+    </suppress>
+    -->
+</suppressions>

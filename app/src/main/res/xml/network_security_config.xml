@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DevSecOps hardening: bloquea todo tráfico en claro (HTTP) en toda la app.
+  Solo se permite HTTPS al backend de BioGuard.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">bioguard-api-lkvnq.ondigitalocean.app</domain>
+    </domain-config>
+</network-security-config>

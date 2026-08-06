@@ -6,6 +6,22 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
+import java.io.FileInputStream
+import java.util.Properties
+
+// DevSecOps: credenciales de firma de release. Se cargan desde keystore.properties
+// (local, NO versionado) o desde variables de entorno (usadas en CI).
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+// DevSecOps: tratar valores vacíos como "secreto ausente". Evita que un env
+// vacío en CI (p.ej. BIOGUARD_STORE_FILE="") se interprete como configurado.
+fun secretFromEnvOrProperty(envName: String, propertyName: String): String? =
+    (System.getenv(envName) ?: keystoreProperties.getProperty(propertyName))
+        ?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.example.bioguard_wearos"
     compileSdk {
@@ -20,11 +36,43 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        // Endpoint único de la API. No es un secreto: se mantiene en BuildConfig
+        // para separarlo de la lógica de negocio.
+        buildConfigField(
+            "String",
+            "BASE_URL",
+            "\"https://bioguard-api-lkvnq.ondigitalocean.app\""
+        )
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = secretFromEnvOrProperty("BIOGUARD_STORE_FILE", "storeFile")
+                ?.let { file(it) }
+            storePassword = secretFromEnvOrProperty("BIOGUARD_STORE_PASSWORD", "storePassword")
+            keyAlias = secretFromEnvOrProperty("BIOGUARD_KEY_ALIAS", "keyAlias")
+            keyPassword = secretFromEnvOrProperty("BIOGUARD_KEY_PASSWORD", "keyPassword")
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            val releaseSigning = signingConfigs.findByName("release")
+            if (releaseSigning?.storeFile != null &&
+                releaseSigning.keyAlias != null &&
+                releaseSigning.keyPassword != null &&
+                releaseSigning.storePassword != null
+            ) {
+                signingConfig = releaseSigning
+            } else {
+                println(
+                    "BioGuard: signing de release no configurado " +
+                        "(falta keystore.properties o env BIOGUARD_*). " +
+                        "La APK release quedará SIN firmar."
+                )
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -38,6 +86,7 @@ android {
     useLibrary("wear-sdk")
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -76,6 +125,10 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+
+    // DevSecOps: cifrado de la BD Room en repositorio (SQLCipher).
+    implementation(libs.sqlcipher.android)
+    implementation(libs.sqlite.androidx)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

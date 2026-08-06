@@ -19,7 +19,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 @Singleton
 class BioGuardPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val cryptoManager: TokenCryptoManager
 ) {
     private val isFirstRunKey = booleanPreferencesKey("is_first_run")
     private val jwtTokenKey = stringPreferencesKey("jwt_token")
@@ -33,7 +34,8 @@ class BioGuardPreferences @Inject constructor(
     }
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        !preferences[jwtTokenKey].isNullOrEmpty()
+        val encryptedToken = preferences[jwtTokenKey]
+        !encryptedToken.isNullOrEmpty() && cryptoManager.decrypt(encryptedToken) != null
     }
 
     suspend fun setFirstRunComplete() {
@@ -44,18 +46,20 @@ class BioGuardPreferences @Inject constructor(
 
     suspend fun saveAuthToken(token: String, refreshToken: String, expiracion: Long) {
         context.dataStore.edit { preferences ->
-            preferences[jwtTokenKey] = token
-            preferences[refreshTokenKey] = refreshToken
+            preferences[jwtTokenKey] = cryptoManager.encrypt(token)
+            preferences[refreshTokenKey] = cryptoManager.encrypt(refreshToken)
             preferences[tokenExpiryKey] = expiracion
         }
     }
 
     suspend fun getJwtToken(): String? {
-        return context.dataStore.data.first()[jwtTokenKey]
+        val encrypted = context.dataStore.data.first()[jwtTokenKey] ?: return null
+        return cryptoManager.decrypt(encrypted)
     }
 
     suspend fun getRefreshToken(): String? {
-        return context.dataStore.data.first()[refreshTokenKey]
+        val encrypted = context.dataStore.data.first()[refreshTokenKey] ?: return null
+        return cryptoManager.decrypt(encrypted)
     }
 
     suspend fun getTokenExpiry(): Long {

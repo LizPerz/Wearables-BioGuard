@@ -12,7 +12,7 @@ coreSplashscreen = "1.2.0"
 kotlinxCoroutines = "1.9.0"
 navigation = "2.8.5"
 healthServicesClient = "1.0.0"
-guava = "31.1-android"
+guava = "33.6.0-android"
 hilt = "2.59"
 hiltNavigationCompose = "1.2.0"
 datastorePreferences = "1.1.1"
@@ -27,6 +27,9 @@ junit = "4.13.2"
 mockk = "1.13.13"
 ktor = "3.0.3"
 workmanager = "2.10.0"
+dependencycheck = "12.2.2"
+sqlcipher = "4.17.0"
+androidxSqlite = "2.6.2"
 
 [libraries]
 play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
@@ -69,6 +72,8 @@ room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+sqlcipher-android = { group = "net.zetetic", name = "sqlcipher-android", version.ref = "sqlcipher" }
+sqlite-androidx = { group = "androidx.sqlite", name = "sqlite", version.ref = "androidxSqlite" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
@@ -79,3 +84,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+dependencycheck = { id = "org.owasp.dependencycheck", version.ref = "dependencycheck" }

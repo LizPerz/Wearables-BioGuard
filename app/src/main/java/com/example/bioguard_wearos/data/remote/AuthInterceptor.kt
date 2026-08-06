@@ -2,8 +2,11 @@ package com.example.bioguard_wearos.data.remote
 
 import android.util.Log
 import com.example.bioguard_wearos.data.local.BioGuardPreferences
+import com.example.bioguard_wearos.data.remote.dto.RefreshTokenRequestDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -51,7 +54,7 @@ class AuthInterceptor(
                 return chain.proceed(request)
             }
 
-            val refreshBody = """{"refreshToken":"$refreshToken"}"""
+            val refreshBody = Json.encodeToString(RefreshTokenRequestDto(refreshToken = refreshToken))
             val refreshRequest = Request.Builder()
                 .url("$baseUrl/api/Auth/refresh")
                 .post(refreshBody.toRequestBody("application/json".toMediaType()))

@@ -1,0 +1,43 @@
+# Dependabot: actualizaciones automáticas de dependencias y acciones de CI
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      androidx:
+        patterns:
+          - "androidx.*"
+          - "com.google.android.*"
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "org.jetbrains.kotlinx*"
+          - "com.google.devtools.ksp*"
+      ktor-okhttp:
+        patterns:
+          - "io.ktor*"
+          - "com.squareup.okhttp*"
+      security-tools:
+        patterns:
+          - "org.owasp.dependencycheck*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      ci-actions:
+        patterns:
+          - "*"

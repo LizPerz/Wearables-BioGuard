@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# --- DevSecOps: nunca versionar credenciales de firma ---
+keystore.properties
+*.jks
+*.keystore
+*.key
