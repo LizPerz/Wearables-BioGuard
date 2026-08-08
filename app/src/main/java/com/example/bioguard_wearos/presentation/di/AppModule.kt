@@ -1,6 +1,7 @@
 package com.example.bioguard_wearos.presentation.di
 
 import android.content.Context
+import com.example.bioguard_wearos.data.bluetooth.PriorityMessageQueue
 import com.example.bioguard_wearos.data.local.BioGuardPreferences
 import com.example.bioguard_wearos.data.local.BiometricReadingRepositoryImpl
 import com.example.bioguard_wearos.data.local.db.BiometricReadingDao
@@ -10,6 +11,7 @@ import com.example.bioguard_wearos.data.repository.SyncRepositoryImpl
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
 import com.example.bioguard_wearos.domain.repository.SensorDataRepository
 import com.example.bioguard_wearos.domain.repository.SyncRepository
+import com.example.bioguard_wearos.domain.risk.RiskThresholdController
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -49,9 +51,10 @@ object AppModule {
     @Singleton
     fun provideSensorDataRepository(
         @ApplicationContext context: Context,
-        readingRepository: BiometricReadingRepository
+        readingRepository: BiometricReadingRepository,
+        riskThresholdController: RiskThresholdController
     ): SensorDataRepository {
-        return SensorDataRepositoryImpl(context, readingRepository)
+        return SensorDataRepositoryImpl(context, readingRepository, riskThresholdController)
     }
 
     @Provides
@@ -59,8 +62,9 @@ object AppModule {
     fun provideSyncRepository(
         @ApplicationContext context: Context,
         readingRepository: BiometricReadingRepository,
-        preferences: BioGuardPreferences
+        preferences: BioGuardPreferences,
+        priorityQueue: PriorityMessageQueue
     ): SyncRepository {
-        return SyncRepositoryImpl(context, readingRepository, preferences)
+        return SyncRepositoryImpl(context, readingRepository, preferences, priorityQueue)
     }
 }

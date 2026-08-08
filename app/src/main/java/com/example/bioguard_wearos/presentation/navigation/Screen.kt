@@ -19,8 +19,5 @@ sealed class Screen {
     data object Error : Screen()
 
     @Serializable
-    data object Login : Screen()
-
-    @Serializable
     data object CriticalAlert : Screen()
 }

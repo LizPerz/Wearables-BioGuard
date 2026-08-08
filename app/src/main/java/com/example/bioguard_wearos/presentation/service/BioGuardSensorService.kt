@@ -27,6 +27,8 @@ import com.example.bioguard_wearos.domain.risk.AlertManager
 import com.example.bioguard_wearos.domain.risk.BiometricInput
 import com.example.bioguard_wearos.domain.risk.RiskLevel
 import com.example.bioguard_wearos.domain.risk.RiskAssessment
+import com.example.bioguard_wearos.domain.risk.RiskThresholdController
+import com.example.bioguard_wearos.domain.risk.RiskThresholds
 import com.example.bioguard_wearos.domain.risk.TriggerSource
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
@@ -93,7 +95,11 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     @Inject
     lateinit var preferences: BioGuardPreferences
 
+    @Inject
+    lateinit var riskThresholdController: RiskThresholdController
 
+    @Inject
+    lateinit var dutyCycleManager: com.example.bioguard_wearos.data.energy.DutyCycleManager
 
     private val _currentData = MutableStateFlow(SensorData())
     private val currentData: StateFlow<SensorData> = _currentData.asStateFlow()
@@ -104,6 +110,8 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private var lastRiskEvalTimestamp = 0L
     private var cachedBmi = DEFAULT_BMI
     private val batteryThresholdsNotified = mutableSetOf<Int>()
+    private var criticalEpisodeActive = false
+    private var lastRiskAssessment: RiskAssessment? = null
 
     override fun onBind(intent: Intent?): IBinder = binder
 
@@ -117,7 +125,9 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         createAlertNotificationChannel()
         acquireWakeLock()
         loadPatientBmi()
+        loadRiskThresholds()
         observeSensorData()
+        startRiskEvaluationLoop()
         startBatteryMonitor()
         startHeartbeatLoop()
         
@@ -136,14 +146,12 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             this, android.Manifest.permission.BODY_SENSORS
         ) == PackageManager.PERMISSION_GRANTED
 
-        val hasHeartRate = try {
-            ContextCompat.checkSelfPermission(
-                this, "android.permission.health.READ_HEART_RATE"
-            ) == PackageManager.PERMISSION_GRANTED
-        } catch (e: Exception) { false }
+        val hasHeartRate = hasHealthHeartRatePermission()
 
-        if (!hasBodySensors && !hasHeartRate) {
-            Log.w(TAG, "Sin permisos de sensores. BODY_SENSORS=$hasBodySensors, HR=$hasHeartRate")
+        if (!hasBodySensors || !hasHeartRate) {
+            Log.w(TAG, "Sin permisos requeridos de sensores. BODY_SENSORS=$hasBodySensors, HR=$hasHeartRate")
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         try {
@@ -154,7 +162,9 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             Log.w(TAG, "El servicio será detenido por el sistema sin foreground")
         }
 
-        sensorDataRepository.startSensors()
+        serviceScope.launch {
+            sensorDataRepository.startSensors()
+        }
 
         return START_STICKY
     }
@@ -192,6 +202,62 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         }
     }
 
+    private fun loadRiskThresholds() {
+        serviceScope.launch {
+            try {
+                val thresholds = preferences.riskThresholds.first()
+                riskThresholdController.update(thresholds)
+                Log.d(TAG, "Umbrales de riesgo cargados: $thresholds")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error cargando umbrales de riesgo: ${e.message}")
+            }
+        }
+    }
+
+    private fun startRiskEvaluationLoop() {
+        serviceScope.launch {
+            while (true) {
+                evaluateRisk()
+                delay(RISK_EVAL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun evaluateRisk() {
+        val data = _currentData.value
+        if (data.bpm <= 0f) return
+
+        val assessment = RiskAssessment.fromBiometrics(
+            bpm = data.bpm,
+            temp = data.temperature,
+            gsr = data.gsr,
+            thresholds = riskThresholdController.current
+        )
+        lastRiskAssessment = assessment
+
+        when (assessment.level) {
+            RiskLevel.CRITICAL_HIGH -> {
+                if (!criticalEpisodeActive && !alertManager.alertState.value.isActive) {
+                    criticalEpisodeActive = true
+                    Log.w(TAG, "Riesgo local CRÍTICO detectado (umbrales: ${riskThresholdController.current})")
+                    showCriticalNotification(data)
+                    alertManager.triggerAlert(assessment)
+                }
+            }
+            RiskLevel.MODERATE_HIGH -> {
+                if (criticalEpisodeActive && !alertManager.alertState.value.isActive) {
+                    Log.d(TAG, "Riesgo local moderado-alto detectado: ${assessment.level.label}")
+                }
+            }
+            else -> {
+                if (criticalEpisodeActive && !alertManager.alertState.value.isActive) {
+                    Log.d(TAG, "Riesgo local normalizado, episodio crítico finalizado")
+                }
+                criticalEpisodeActive = false
+            }
+        }
+    }
+
     private fun observeSensorData() {
         serviceScope.launch {
             sensorDataRepository.sensorData.collect { data ->
@@ -203,6 +269,10 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     }
 
     private fun saveReading(data: SensorData) {
+        if (data.bpm <= 0f) {
+            Log.d(TAG, "Lectura omitida: sin BPM real (posible reloj fuera de la muneca)")
+            return
+        }
         serviceScope.launch {
             try {
                 readingRepository.saveReading(
@@ -211,7 +281,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         temperature = data.temperature,
                         gsr = data.gsr,
                         bmi = cachedBmi,
-                        riskLevel = RiskLevel.OPTIMAL
+                        riskLevel = lastRiskAssessment?.level ?: RiskLevel.OPTIMAL
                     )
                 )
             } catch (e: Exception) {
@@ -262,17 +332,9 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     }
 
     private fun acquireWakeLock() {
-        try {
-            val powerManager = getSystemService(POWER_SERVICE) as? PowerManager
-            wakeLock = powerManager?.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "BioGuard::SensorWakeLock"
-            )?.apply {
-                acquire(60 * 60 * 1000L)
-            }
-            Log.d(TAG, "WakeLock adquirido correctamente")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "No se pudo adquirir WakeLock: ${e.message}")
+        Log.d(TAG, "Utilizando gestión de energía ultra eficiente por DutyCycling (sin WakeLock sostenido)")
+        dutyCycleManager.runWithMicroWakeLock(1000L) {
+            Log.d(TAG, "Micro-WakeLock ejecutado para arranque inicial de sensores")
         }
     }
 
@@ -417,6 +479,17 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         }
     }
 
+    private fun hasHealthHeartRatePermission(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 36) return true
+        return try {
+            ContextCompat.checkSelfPermission(
+                this, "android.permission.health.READ_HEART_RATE"
+            ) == PackageManager.PERMISSION_GRANTED
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override fun onMessageReceived(event: MessageEvent) {
         Log.d(TAG, "Mensaje recibido de Wearable Data Layer: path=${event.path}")
         when (event.path) {
@@ -445,6 +518,71 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             "/commands/dismiss" -> {
                 Log.d(TAG, "Comando de descarte recibido")
                 alertManager.dismissAlert()
+            }
+            "/bioguard/ack" -> {
+                Log.d(TAG, "ACK de sincronización recibido de la app móvil")
+                serviceScope.launch {
+                    try {
+                        val ack = JSONObject(String(event.data, Charsets.UTF_8))
+                        val ackPath = ack.optString("ackPath")
+                        val readingId = ackPath.removePrefix("/bioguard/telemetry/").toLongOrNull()
+                        if (readingId != null) {
+                            readingRepository.markAsSynced(listOf(readingId))
+                            Log.d(TAG, "Lectura $readingId marcada como sincronizada tras ACK del movil")
+                        } else {
+                            Log.d(TAG, "ACK recibido para ruta no persistente: $ackPath")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error procesando ACK en el reloj: ${e.message}")
+                    }
+                }
+            }
+            "/commands/sampling_rate" -> {
+                try {
+                    val json = String(event.data, Charsets.UTF_8)
+                    val command = JSONObject(json)
+                    val intervalSeconds = command.optInt("intervalSeconds", 60)
+                    Log.d(TAG, "Comando de intervalo de muestreo recibido del móvil: $intervalSeconds segundos")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error procesando comando de muestreo del móvil", e)
+                }
+            }
+            "/commands/sensor_toggle" -> {
+                try {
+                    val json = String(event.data, Charsets.UTF_8)
+                    val command = JSONObject(json)
+                    val sensor = command.optString("sensor", "")
+                    val enabled = command.optBoolean("enabled", true)
+                    Log.d(TAG, "Comando de conmutación de sensor recibido del móvil: sensor=$sensor, enabled=$enabled")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error procesando comando de conmutación de sensor del móvil", e)
+                }
+            }
+            "/risk-thresholds" -> {
+                try {
+                    val json = String(event.data, Charsets.UTF_8)
+                    Log.d(TAG, "Umbrales de riesgo recibidos del teléfono: $json")
+                    val command = JSONObject(json)
+                    val thresholds = RiskThresholds(
+                        criticalBpmHigh = command.optDouble("criticalBpmHigh", RiskThresholds.DEFAULT.criticalBpmHigh.toDouble()).toFloat(),
+                        criticalBpmLow = command.optDouble("criticalBpmLow", RiskThresholds.DEFAULT.criticalBpmLow.toDouble()).toFloat(),
+                        criticalTemp = command.optDouble("criticalTemp", RiskThresholds.DEFAULT.criticalTemp.toDouble()).toFloat(),
+                        moderateBpm = command.optDouble("moderateBpm", RiskThresholds.DEFAULT.moderateBpm.toDouble()).toFloat(),
+                        moderateTemp = command.optDouble("moderateTemp", RiskThresholds.DEFAULT.moderateTemp.toDouble()).toFloat(),
+                        moderateGsr = command.optDouble("moderateGsr", RiskThresholds.DEFAULT.moderateGsr.toDouble()).toFloat()
+                    )
+                    riskThresholdController.update(thresholds)
+                    serviceScope.launch {
+                        try {
+                            preferences.saveRiskThresholds(thresholds)
+                            Log.d(TAG, "Umbrales de riesgo persistidos: $thresholds")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error persistiendo umbrales de riesgo: ${e.message}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error procesando umbrales de riesgo del teléfono", e)
+                }
             }
         }
     }

@@ -13,7 +13,6 @@ import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
 import androidx.health.services.client.data.MeasureCapabilities
-import com.example.bioguard_wearos.BuildConfig
 import com.example.bioguard_wearos.data.hrv.HrvCalculator
 import com.example.bioguard_wearos.data.hrv.StressMapper
 import com.example.bioguard_wearos.data.local.TelemetrySaveScheduler
@@ -23,6 +22,8 @@ import com.example.bioguard_wearos.domain.model.SensorAvailability
 import com.example.bioguard_wearos.domain.model.SensorData
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
 import com.example.bioguard_wearos.domain.repository.SensorDataRepository
+import com.example.bioguard_wearos.domain.risk.RiskAssessment
+import com.example.bioguard_wearos.domain.risk.RiskThresholdController
 import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.MoreExecutors
@@ -38,7 +39,8 @@ import kotlinx.coroutines.launch
 
 class SensorDataRepositoryImpl(
     private val context: Context,
-    private val readingRepository: BiometricReadingRepository? = null
+    private val readingRepository: BiometricReadingRepository? = null,
+    private val riskThresholdController: RiskThresholdController = RiskThresholdController()
 ) : SensorDataRepository, SensorEventListener {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -89,12 +91,24 @@ class SensorDataRepositoryImpl(
 
         override fun onRegistrationFailed(throwable: Throwable) {
             heartRateStarted = false
+            _sensorAvailability.value = _sensorAvailability.value.copy(
+                heartRateAvailable = false,
+                statusMessage = "No se pudo iniciar frecuencia cardiaca"
+            )
             Log.w("BIOGUARD", "Health Services falló el registro, intentando SensorManager fallback")
             startHeartRateSensorManager()
         }
 
         override fun onAvailabilityChanged(dataType: DeltaDataType<*, *>, availability: Availability) {
             Log.d("BIOGUARD", "Disponibilidad cambiada: $dataType -> $availability")
+            if (dataType == DataType.HEART_RATE_BPM) {
+                val offBody = availability.toString().contains("UNAVAILABLE_DEVICE_OFF_BODY", ignoreCase = true)
+                _sensorAvailability.value = _sensorAvailability.value.copy(
+                    heartRateAvailable = !offBody && hasRealBpmData,
+                    heartRateOffBody = offBody,
+                    statusMessage = if (offBody) "Coloca el reloj en la muneca para medir pulso" else null
+                )
+            }
         }
 
         override fun onDataReceived(data: DataPointContainer) {
@@ -104,7 +118,11 @@ class SensorDataRepositoryImpl(
                 if (bpm > 0f) {
                     hasRealBpmData = true
                     processHeartRate(bpm)
-                    _sensorAvailability.value = _sensorAvailability.value.copy(heartRateAvailable = true)
+                    _sensorAvailability.value = _sensorAvailability.value.copy(
+                        heartRateAvailable = true,
+                        heartRateOffBody = false,
+                        statusMessage = null
+                    )
                     Log.d("BIOGUARD", "Health Services BPM: $bpm")
                 }
             }
@@ -119,7 +137,6 @@ class SensorDataRepositoryImpl(
         startHeartRateMeasure()
         temperatureProvider.start()
         startHrvUpdater()
-        startBpmFallbackSimulation()
         startPeriodicSave()
     }
 
@@ -140,6 +157,17 @@ class SensorDataRepositoryImpl(
         val sdnn = hrvCalculator.computeSdnn()
         val stressUs = stressMapper.mapToStressUs(rmssd)
         val label = stressMapper.getStressLabel(stressUs)
+
+        val temp = _sensorData.value.temperature
+        val riskAssessment = RiskAssessment.fromBiometrics(
+            bpm = bpm,
+            temp = temp,
+            gsr = stressUs,
+            thresholds = riskThresholdController.current
+        )
+        if (riskAssessment.level.isElevated) {
+            Log.w("BIOGUARD_RISK", "Evaluación de riesgo local elevada: ${riskAssessment.level.label} (Prob=${riskAssessment.probability})")
+        }
 
         synchronized(dataLock) {
             _sensorData.value = _sensorData.value.copy(
@@ -176,29 +204,6 @@ class SensorDataRepositoryImpl(
                 }
                 delay(1000)
             }
-        }
-    }
-
-    private var bpmSimulationJob: kotlinx.coroutines.Job? = null
-
-    private fun startBpmFallbackSimulation() {
-        if (!BuildConfig.DEBUG) {
-            Log.d("BIOGUARD", "Simulación de BPM desactivada en release")
-            return
-        }
-        bpmSimulationJob?.cancel()
-        bpmSimulationJob = scope.launch {
-            delay(5000)
-            if (hasRealBpmData) return@launch
-            Log.d("BIOGUARD", "Sin datos de BPM reales tras 5s, iniciando simulaci\u00f3n de respaldo")
-            var simBpm = 70f
-            while (isActive && !hasRealBpmData) {
-                processHeartRate(simBpm)
-                simBpm += (Math.random().toFloat() * 6f - 3f)
-                simBpm = simBpm.coerceIn(55f, 100f)
-                delay(1500)
-            }
-            Log.d("BIOGUARD", "Simulaci\u00f3n BPM detenida, datos reales recibidos")
         }
     }
 
@@ -300,7 +305,11 @@ class SensorDataRepositoryImpl(
                     if (bpm > 0f) {
                         hasRealBpmData = true
                         processHeartRate(bpm)
-                        _sensorAvailability.value = _sensorAvailability.value.copy(heartRateAvailable = true)
+                        _sensorAvailability.value = _sensorAvailability.value.copy(
+                            heartRateAvailable = true,
+                            heartRateOffBody = false,
+                            statusMessage = null
+                        )
                         Log.d("BIOGUARD", "SensorManager BPM: $bpm (accuracy=${event.accuracy})")
                     }
                 }

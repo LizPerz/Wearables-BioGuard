@@ -3,8 +3,7 @@ package com.example.bioguard_wearos.data.local
 import com.example.bioguard_wearos.data.local.db.BiometricReadingEntity
 import com.example.bioguard_wearos.domain.model.SensorData
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
-import com.example.bioguard_wearos.domain.risk.BiometricInput
-import com.example.bioguard_wearos.domain.risk.RiskLevel
+import com.example.bioguard_wearos.domain.risk.RiskAssessment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,13 +37,19 @@ class TelemetrySaveScheduler(
         val data = sensorDataFlow.value
         if (data.bpm <= 0f) return
 
+        val assessment = RiskAssessment.fromBiometrics(
+            bpm = data.bpm,
+            temp = data.temperature,
+            gsr = data.gsr
+        )
+
         val entity = BiometricReadingEntity(
             timestamp = System.currentTimeMillis(),
             bpm = data.bpm,
             temperature = data.temperature,
             gsr = data.gsr,
             bmi = DEFAULT_BMI,
-            riskLevel = RiskLevel.OPTIMAL
+            riskLevel = assessment.level
         )
         readingRepository.saveReading(entity)
     }

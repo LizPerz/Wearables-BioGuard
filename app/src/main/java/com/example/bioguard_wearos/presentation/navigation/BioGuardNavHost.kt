@@ -19,8 +19,6 @@ import com.example.bioguard_wearos.presentation.screens.dashboard.DashboardScree
 import com.example.bioguard_wearos.presentation.screens.dashboard.DashboardViewModel
 import com.example.bioguard_wearos.presentation.screens.error.ErrorScreen
 import com.example.bioguard_wearos.presentation.screens.error.ErrorViewModel
-import com.example.bioguard_wearos.presentation.screens.login.LoginScreen
-import com.example.bioguard_wearos.presentation.screens.login.LoginViewModel
 import com.example.bioguard_wearos.presentation.screens.ready.ReadyScreen
 import com.example.bioguard_wearos.presentation.screens.ready.ReadyViewModel
 import com.example.bioguard_wearos.presentation.screens.sensorcheck.SensorCheckScreen
@@ -35,20 +33,8 @@ fun BioGuardNavHost(
     preferences: BioGuardPreferences,
     alertManager: AlertManager
 ) {
-    val isLoggedIn by preferences.isLoggedIn.collectAsState(initial = true)
-    var previousLoginState by remember { mutableStateOf(true) }
-
     val alertState by alertManager.alertState.collectAsState()
     var previousAlertActive by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isLoggedIn) {
-        if (previousLoginState && !isLoggedIn) {
-            navController.navigate(Screen.Login) {
-                popUpTo(0) { inclusive = true }
-            }
-        }
-        previousLoginState = isLoggedIn
-    }
 
     LaunchedEffect(alertState) {
         val isActive = alertState.isActive
@@ -72,10 +58,6 @@ fun BioGuardNavHost(
                 onTimeout = {
                     if (uiState.isFirstRun) {
                         navController.navigate(Screen.SensorCheck) {
-                            popUpTo(Screen.Splash) { inclusive = true }
-                        }
-                    } else if (!uiState.isLoggedIn) {
-                        navController.navigate(Screen.Login) {
                             popUpTo(Screen.Splash) { inclusive = true }
                         }
                     } else {
@@ -129,22 +111,6 @@ fun BioGuardNavHost(
                 onRetry = {
                     navController.navigate(Screen.Dashboard) {
                         popUpTo(Screen.Error) { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable<Screen.Login> {
-            val viewModel: LoginViewModel = hiltViewModel()
-
-            LoginScreen(
-                viewModel = viewModel,
-                onLoginSuccess = {
-                    navController.navigate(Screen.Dashboard) {
-                        popUpTo(0) { inclusive = true }
-                    }
-                    if (sensorsEnabled) {
-                        startSensors()
                     }
                 }
             )

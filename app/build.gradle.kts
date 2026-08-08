@@ -33,6 +33,11 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        buildConfigField(
+            "String",
+            "BIOGUARD_PAIRING_SECRET",
+            "\"${System.getenv("BIOGUARD_PAIRING_SECRET") ?: "dev-only-change-me-bioguard-pairing-secret-32"}\""
+        )
     }
 
     signingConfigs {
@@ -79,6 +84,7 @@ dependencies {
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)
     implementation(libs.wear.tooling.preview)
+    implementation(libs.wear.watchface.complications.datasource)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.health.services.client)
     implementation(libs.guava)
@@ -95,6 +101,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.workmanager)
+    implementation(libs.zxing.core)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)

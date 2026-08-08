@@ -1,6 +1,6 @@
 [versions]
 agp = "9.2.1"
-playServicesWearable = "18.0.0"
+playServicesWearable = "20.0.1"
 kotlin = "2.2.10"
 composeBom = "2026.06.00"
 composeMaterial3 = "1.6.2"
@@ -23,9 +23,11 @@ room = "2.7.1"
 robolectric = "4.14.1"
 androidxTestCore = "1.6.1"
 coroutinesTest = "1.9.0"
+wearWatchfaceComplications = "1.2.1"
 junit = "4.13.2"
 mockk = "1.13.13"
 workmanager = "2.10.0"
+zxing = "3.5.4"
 
 [libraries]
 play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
@@ -45,6 +47,7 @@ compose-material3 = { group = "androidx.wear.compose", name = "compose-material3
 compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "composeFoundation" }
 compose-ui-tooling = { group = "androidx.wear.compose", name = "compose-ui-tooling", version.ref = "composeUiTooling" }
 wear-tooling-preview = { group = "androidx.wear", name = "wear-tooling-preview", version.ref = "wearToolingPreview" }
+wear-watchface-complications-datasource = { group = "androidx.wear.watchface", name = "watchface-complications-data-source-ktx", version.ref = "wearWatchfaceComplications" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
@@ -67,6 +70,7 @@ room-testing = { group = "androidx.room", name = "room-testing", version.ref = "
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

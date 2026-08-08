@@ -2,14 +2,18 @@ package com.example.bioguard_wearos.data.repository
 
 import android.content.Context
 import android.util.Log
+import com.example.bioguard_wearos.data.bluetooth.MessagePriority
+import com.example.bioguard_wearos.data.bluetooth.PriorityMessageQueue
 import com.example.bioguard_wearos.data.local.BioGuardPreferences
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
 import com.example.bioguard_wearos.domain.repository.SyncRepository
+import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -54,32 +58,54 @@ private data class PhoneHeartbeatRequest(
 
 @Singleton
 class SyncRepositoryImpl @Inject constructor(
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
     private val readingRepository: BiometricReadingRepository,
-    private val preferences: BioGuardPreferences
+    private val preferences: BioGuardPreferences,
+    private val priorityQueue: PriorityMessageQueue
 ) : SyncRepository {
 
     companion object {
         private const val TAG = "BIOGUARD_SYNC"
     }
 
-    private suspend fun sendMessageToPhone(path: String, payloadJson: String): Result<Unit> {
+    /**
+     * Utiliza Wearable DataClient (DataItems) para sincronización eficiente de telemetría continua
+     * reduciendo el uso de radio Bluetooth y evitando descarte de paquetes.
+     */
+    private suspend fun sendDataClientItem(path: String, payloadJson: String): Result<Unit> {
+        return try {
+            val dataClient = Wearable.getDataClient(context)
+            val putDataMapReq = PutDataMapRequest.create(path).apply {
+                dataMap.putString("payload", payloadJson)
+                dataMap.putLong("timestamp", System.currentTimeMillis())
+            }
+            val putDataReq = putDataMapReq.asPutDataRequest().setUrgent()
+            dataClient.putDataItem(putDataReq).await()
+            Log.d(TAG, "DataClient Item publicado en $path")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error publicando DataItem en $path: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun sendMessageToPhoneInternal(path: String, payloadJson: String): Boolean {
         return try {
             val nodeClient = Wearable.getNodeClient(context)
             val messageClient = Wearable.getMessageClient(context)
-            val nodes = nodeClient.connectedNodes.await()
+            val nodes = nodeClient.connectedNodes.await().filter { it.isNearby }
             if (nodes.isEmpty()) {
-                Log.w(TAG, "No hay teléfonos conectados para enviar mensaje a $path")
-                return Result.failure(Exception("Teléfono no conectado"))
+                Log.w(TAG, "No hay telefonos cercanos para enviar mensaje a $path")
+                return false
             }
             for (node in nodes) {
                 messageClient.sendMessage(node.id, path, payloadJson.toByteArray(Charsets.UTF_8)).await()
             }
             Log.d(TAG, "Mensaje enviado exitosamente a $path")
-            Result.success(Unit)
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Error enviando mensaje a $path: ${e.message}", e)
-            Result.failure(e)
+            false
         }
     }
 
@@ -122,7 +148,11 @@ class SyncRepositoryImpl @Inject constructor(
                 timestamp = Instant.now().toString()
             )
             val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), request)
-            sendMessageToPhone("/sensors/readings", jsonString)
+            if (sendMessageToPhoneInternal("/bioguard/telemetry/live-${System.currentTimeMillis()}", jsonString)) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("No hay telefono cercano para telemetria live"))
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Excepción en enviarLecturaLive [${e::class.simpleName}]: ${e.message}", e)
             Result.failure(e)
@@ -148,7 +178,11 @@ class SyncRepositoryImpl @Inject constructor(
                 sensoresActivos = sensoresActivos
             )
             val jsonString = Json.encodeToString(PhoneHeartbeatRequest.serializer(), req)
-            sendMessageToPhone("/sensors/heartbeat", jsonString)
+            if (sendMessageToPhoneInternal("/bioguard/heartbeat", jsonString)) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("No hay telefono cercano para heartbeat"))
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Excepción en enviarHeartbeat [${e::class.simpleName}]: ${e.message}", e)
             Result.failure(e)
@@ -162,7 +196,7 @@ class SyncRepositoryImpl @Inject constructor(
             return Result.success(0)
         }
 
-        Log.d(TAG, "Preparando sincronización de ${unsynced.size} lecturas locales con el teléfono")
+        Log.d(TAG, "Sincronizando ${unsynced.size} lecturas locales al telefono cercano")
         var count = 0
         for (reading in unsynced) {
             val req = PhoneReadingRequest(
@@ -172,12 +206,11 @@ class SyncRepositoryImpl @Inject constructor(
                 timestamp = Instant.ofEpochMilli(reading.timestamp).toString()
             )
             val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), req)
-            val res = sendMessageToPhone("/sensors/readings", jsonString)
-            if (res.isSuccess) {
-                readingRepository.markAsSynced(listOf(reading.id))
+            val sent = sendMessageToPhoneInternal("/bioguard/telemetry/${reading.id}", jsonString)
+            if (sent) {
                 count++
             } else {
-                Log.w(TAG, "Fallo al enviar lectura ${reading.id} al teléfono. Abortando ciclo.")
+                Log.w(TAG, "Fallo al enviar lectura ${reading.id} al telefono cercano. Abortando ciclo.")
                 break
             }
         }
@@ -203,7 +236,14 @@ class SyncRepositoryImpl @Inject constructor(
                 descripcion = descripcion
             )
             val jsonString = Json.encodeToString(WatchEventDto.serializer(), dto)
-            sendMessageToPhone("/sensors/events", jsonString)
+            priorityQueue.enqueue(
+                id = UUID.randomUUID().toString(),
+                path = "/sensors/events",
+                payloadJson = jsonString,
+                priority = MessagePriority.ALERT,
+                sendAction = ::sendMessageToPhoneInternal
+            )
+            Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Excepción en enviarEvento [${e::class.simpleName}]: ${e.message}", e)
             Result.failure(e)
@@ -229,7 +269,14 @@ class SyncRepositoryImpl @Inject constructor(
                 sudoracionGsr = gsr
             )
             val jsonString = Json.encodeToString(WatchAlertDto.serializer(), dto)
-            sendMessageToPhone("/sensors/alerts", jsonString)
+            priorityQueue.enqueue(
+                id = UUID.randomUUID().toString(),
+                path = "/sensors/alerts",
+                payloadJson = jsonString,
+                priority = MessagePriority.EMERGENCY,
+                sendAction = ::sendMessageToPhoneInternal
+            )
+            Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Excepción en enviarAlerta [${e::class.simpleName}]: ${e.message}", e)
             Result.failure(e)

@@ -8,9 +8,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.bioguard_wearos.domain.risk.RiskThresholds
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -38,6 +40,13 @@ class BioGuardPreferences @Inject constructor(
     private val isFirstRunKey = booleanPreferencesKey("is_first_run")
     private val dispositivoIdKey = stringPreferencesKey("dispositivo_id")
     private val pacienteIdKey = stringPreferencesKey("paciente_id")
+
+    private val riskCriticalBpmHighKey = floatPreferencesKey("risk_critical_bpm_high")
+    private val riskCriticalBpmLowKey = floatPreferencesKey("risk_critical_bpm_low")
+    private val riskCriticalTempKey = floatPreferencesKey("risk_critical_temp")
+    private val riskModerateBpmKey = floatPreferencesKey("risk_moderate_bpm")
+    private val riskModerateTempKey = floatPreferencesKey("risk_moderate_temp")
+    private val riskModerateGsrKey = floatPreferencesKey("risk_moderate_gsr")
 
     val isFirstRun: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[isFirstRunKey] ?: true
@@ -74,6 +83,28 @@ class BioGuardPreferences @Inject constructor(
 
     suspend fun getPacienteId(): String? {
         return context.dataStore.data.first()[pacienteIdKey]?.let { decrypt(it) }
+    }
+
+    val riskThresholds: Flow<RiskThresholds> = context.dataStore.data.map { prefs ->
+        RiskThresholds(
+            criticalBpmHigh = prefs[riskCriticalBpmHighKey] ?: RiskThresholds.DEFAULT.criticalBpmHigh,
+            criticalBpmLow = prefs[riskCriticalBpmLowKey] ?: RiskThresholds.DEFAULT.criticalBpmLow,
+            criticalTemp = prefs[riskCriticalTempKey] ?: RiskThresholds.DEFAULT.criticalTemp,
+            moderateBpm = prefs[riskModerateBpmKey] ?: RiskThresholds.DEFAULT.moderateBpm,
+            moderateTemp = prefs[riskModerateTempKey] ?: RiskThresholds.DEFAULT.moderateTemp,
+            moderateGsr = prefs[riskModerateGsrKey] ?: RiskThresholds.DEFAULT.moderateGsr
+        )
+    }
+
+    suspend fun saveRiskThresholds(thresholds: RiskThresholds) {
+        context.dataStore.edit { prefs ->
+            prefs[riskCriticalBpmHighKey] = thresholds.criticalBpmHigh
+            prefs[riskCriticalBpmLowKey] = thresholds.criticalBpmLow
+            prefs[riskCriticalTempKey] = thresholds.criticalTemp
+            prefs[riskModerateBpmKey] = thresholds.moderateBpm
+            prefs[riskModerateTempKey] = thresholds.moderateTemp
+            prefs[riskModerateGsrKey] = thresholds.moderateGsr
+        }
     }
 
     private fun getOrCreateKey(): SecretKey {

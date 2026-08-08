@@ -1,5 +1,8 @@
 package com.example.bioguard_wearos.presentation.screens.dashboard
 
+import android.graphics.Bitmap
+import android.provider.Settings
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,17 +25,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +68,11 @@ import com.example.bioguard_wearos.presentation.theme.BioGuardStressHigh
 import com.example.bioguard_wearos.presentation.theme.BioGuardStressModerate
 import com.example.bioguard_wearos.presentation.theme.BioGuardStressLow
 import com.example.bioguard_wearos.presentation.theme.BioGuard_WearOsTheme
+import com.example.bioguard_wearos.util.WearablePairingQr
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
 
@@ -98,16 +111,52 @@ private fun metricIconTint(status: MetricStatus): Color = when (status) {
     MetricStatus.CRITICAL -> BioGuardOnSurface
 }
 
+private fun buildPairingPayload(deviceName: String, deviceId: String, nodeId: String): String {
+    return WearablePairingQr.buildPayload(deviceName, deviceId, nodeId)
+}
+
+private const val TAG = "DashboardScreen"
+
+private fun generateQrBitmap(payload: String, sizePx: Int = 420): Bitmap {
+    val hints = mapOf(
+        EncodeHintType.CHARACTER_SET to "UTF-8",
+        EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
+        EncodeHintType.MARGIN to 3
+    )
+    val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
+    return Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888).apply {
+        for (x in 0 until sizePx) {
+            for (y in 0 until sizePx) {
+                setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+    }
+}
+
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    var showPairingQr by remember { mutableStateOf(false) }
+    var pairingPayload by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        val nodeClient = Wearable.getNodeClient(context)
-        val nodes = nodeClient.connectedNodes.await()
+        val nodeClient = runCatching { Wearable.getNodeClient(context) }.getOrNull()
+        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+            ?.takeIf { it.isNotBlank() } ?: "bioguard-wearable"
+        val nodes = runCatching { nodeClient?.connectedNodes?.await().orEmpty() }
+            .onFailure { Log.w(TAG, "No se pudo consultar nodos conectados: ${it.message}") }
+            .getOrDefault(emptyList())
+        val localNode = runCatching { nodeClient?.localNode?.await() }
+            .onFailure { Log.w(TAG, "No se pudo resolver nodo local; se usara ANDROID_ID: ${it.message}") }
+            .getOrNull()
+        pairingPayload = buildPairingPayload(
+            deviceName = localNode?.displayName?.ifBlank { "BioGuard Wearable" } ?: "BioGuard Wearable",
+            deviceId = androidId,
+            nodeId = localNode?.id ?: androidId
+        )
         viewModel.setPhoneConnected(nodes.isNotEmpty())
     }
 
@@ -136,9 +185,9 @@ fun DashboardScreen(
             Image(
                 painter = painterResource(id = R.drawable.bioguard),
                 contentDescription = "BioGuard Logo",
-                modifier = Modifier.size(60.dp)
+                modifier = Modifier.size(50.dp)
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             MetricPill(
                 icon = { Icon(Icons.Rounded.Favorite, null, Modifier.size(16.dp), tint = metricIconTint(bpmStatus)) },
@@ -148,7 +197,7 @@ fun DashboardScreen(
                 gradientColors = metricColors(bpmStatus),
                 onClick = {
                     viewModel.showDetailDialog(
-                        "Ritmo Card\u00edaco",
+                        "Ritmo Cardíaco",
                         String.format("%.0f", sensorData.bpm),
                         "BPM",
                         DetailIcon.HEART
@@ -160,14 +209,14 @@ fun DashboardScreen(
             MetricPill(
                 icon = { Icon(Icons.Rounded.Thermostat, null, Modifier.size(16.dp), tint = metricIconTint(tempStatus)) },
                 value = String.format("%.1f", sensorData.temperature),
-                label = "\u00b0C",
+                label = "°C",
                 fillFraction = sensorData.tempFraction,
                 gradientColors = metricColors(tempStatus),
                 onClick = {
                     viewModel.showDetailDialog(
                         "Temperatura",
                         String.format("%.1f", sensorData.temperature),
-                        "\u00b0C",
+                        "°C",
                         DetailIcon.THERMOMETER
                     )
                 }
@@ -177,14 +226,14 @@ fun DashboardScreen(
             MetricPill(
                 icon = { Icon(Icons.Rounded.WaterDrop, null, Modifier.size(16.dp), tint = metricIconTint(gsrStatus)) },
                 value = String.format("%.0f", sensorData.gsr),
-                label = "\u00b5S",
+                label = "µS",
                 fillFraction = sensorData.gsrFraction,
                 gradientColors = metricColors(gsrStatus),
                 onClick = {
                     viewModel.showDetailDialog(
-                        "Estr\u00e9s (HRV)",
+                        "Estrés (HRV)",
                         String.format("%.0f", sensorData.gsr),
-                        "\u00b5S",
+                        "µS",
                         DetailIcon.DROPS,
                         hrvRmssd = sensorData.rmssd,
                         hrvSdnn = sensorData.sdnn,
@@ -192,11 +241,34 @@ fun DashboardScreen(
                     )
                 }
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // BOTON DE PANICO DE 1 SOLO TOQUE
+            Button(
+                onClick = { viewModel.triggerPanicButton() },
+                modifier = Modifier
+                    .width(150.dp)
+                    .height(34.dp),
+                shape = RoundedCornerShape(17.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BioGuardError)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Warning, null, Modifier.size(16.dp), tint = BioGuardOnSurface)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "S.O.S / PANICO",
+                        color = BioGuardOnSurface,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             if (!uiState.isPhoneConnected) {
                 Row(
-                    modifier = Modifier.padding(bottom = 20.dp),
+                    modifier = Modifier.padding(bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
@@ -214,6 +286,39 @@ fun DashboardScreen(
                         color = BioGuardPrimary,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            uiState.sensorStatusMessage?.let { message ->
+                Text(
+                    text = message,
+                    color = BioGuardMetricWarning,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+            }
+
+            Button(
+                onClick = { showPairingQr = true },
+                modifier = Modifier
+                    .width(150.dp)
+                    .height(34.dp),
+                shape = RoundedCornerShape(17.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BioGuardPrimary)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Bluetooth, null, Modifier.size(16.dp), tint = BioGuardBackground)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "QR VINCULAR",
+                        color = BioGuardBackground,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -235,6 +340,53 @@ fun DashboardScreen(
             stressLabel = uiState.dialogStressLabel,
             onDismiss = { viewModel.dismissDetailDialog() }
         )
+    }
+
+    if (showPairingQr && pairingPayload.isNotBlank()) {
+        PairingQrDialog(
+            payload = pairingPayload,
+            onDismiss = { showPairingQr = false }
+        )
+    }
+}
+
+@Composable
+private fun PairingQrDialog(
+    payload: String,
+    onDismiss: () -> Unit
+) {
+    val qrBitmap = remember(payload) { generateQrBitmap(payload) }
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BioGuardBackground.copy(alpha = 0.96f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(horizontal = 18.dp)
+            ) {
+                Image(
+                    bitmap = qrBitmap.asImageBitmap(),
+                    contentDescription = "QR de vinculacion Bluetooth BioGuard",
+                    modifier = Modifier
+                        .size(178.dp)
+                        .background(Color.White)
+                        .padding(6.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "ESCANEAR EN APP",
+                    color = BioGuardPrimary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
     }
 }
 
@@ -392,83 +544,6 @@ private fun MetricPill(
             Text(text = value, color = BioGuardOnSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.weight(1f))
             Text(text = label, color = BioGuardOnSurfaceVariant.copy(alpha = 0.8f), fontSize = 11.sp)
-        }
-    }
-}
-
-@WearPreviewDevices
-@WearPreviewFontScales
-@Composable
-private fun DashboardScreenPreview() {
-    BioGuard_WearOsTheme {
-        DashboardScreenStatic(bpm = 78f, temp = 36.4f, gsr = 28f, hrFrac = 0.65f, tempFrac = 0.5f, gsrFrac = 0.35f)
-    }
-}
-
-@Preview(
-    device = "spec:width=454.0dp,height=454.0dp,dpi=326,isRound=true",
-    showBackground = true,
-    backgroundColor = 0xFF000000
-)
-@Composable
-private fun DashboardScreenRoundPreview() {
-    BioGuard_WearOsTheme {
-        DashboardScreenStatic(bpm = 112f, temp = 37.5f, gsr = 65f, hrFrac = 0.85f, tempFrac = 0.7f, gsrFrac = 0.72f)
-    }
-}
-
-@Composable
-private fun DashboardScreenStatic(bpm: Float, temp: Float, gsr: Float, hrFrac: Float, tempFrac: Float, gsrFrac: Float) {
-    val bpmStatus = resolveBpmStatus(bpm)
-    val tempStatus = resolveTempStatus(temp)
-    val gsrStatus = resolveGsrStatus(gsr)
-
-    Box(
-        modifier = Modifier.fillMaxSize().background(
-            Brush.verticalGradient(
-                colors = listOf(BioGuardBackground, BioGuardTealBase.copy(alpha = 0.3f), BioGuardBackground)
-            )
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.bioguard),
-                contentDescription = "BioGuard Logo",
-                modifier = Modifier.size(60.dp)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            MetricPill(
-                icon = { Icon(Icons.Rounded.Favorite, null, Modifier.size(16.dp), tint = metricIconTint(bpmStatus)) },
-                value = String.format("%.0f", bpm),
-                label = "BPM",
-                fillFraction = hrFrac,
-                gradientColors = metricColors(bpmStatus),
-                onClick = {}
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            MetricPill(
-                icon = { Icon(Icons.Rounded.Thermostat, null, Modifier.size(16.dp), tint = metricIconTint(tempStatus)) },
-                value = String.format("%.1f", temp),
-                label = "\u00b0C",
-                fillFraction = tempFrac,
-                gradientColors = metricColors(tempStatus),
-                onClick = {}
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            MetricPill(
-                icon = { Icon(Icons.Rounded.WaterDrop, null, Modifier.size(16.dp), tint = metricIconTint(gsrStatus)) },
-                value = String.format("%.0f", gsr),
-                label = "\u00b5S",
-                fillFraction = gsrFrac,
-                gradientColors = metricColors(gsrStatus),
-                onClick = {}
-            )
         }
     }
 }

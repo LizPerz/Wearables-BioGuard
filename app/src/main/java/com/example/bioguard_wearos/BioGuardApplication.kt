@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.example.bioguard_wearos.domain.errors.HealthWatchdog
 import com.example.bioguard_wearos.worker.SyncScheduler
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -21,6 +22,9 @@ class BioGuardApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var syncScheduler: SyncScheduler
 
+    @Inject
+    lateinit var healthWatchdog: HealthWatchdog
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -34,6 +38,13 @@ class BioGuardApplication : Application(), Configuration.Provider {
             Log.d(TAG, "SyncScheduler programado correctamente")
         } catch (e: Exception) {
             Log.e(TAG, "Error al programar SyncScheduler [${e::class.simpleName}]: ${e.message}", e)
+        }
+
+        try {
+            healthWatchdog.start()
+            Log.d(TAG, "HealthWatchdog iniciado correctamente")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al iniciar HealthWatchdog: ${e.message}", e)
         }
     }
 }

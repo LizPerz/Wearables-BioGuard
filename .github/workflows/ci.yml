@@ -41,12 +41,17 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
+      - name: Static analysis
+        run: ./gradlew lintDebug --no-daemon
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: wearable-unit-test-results
-          path: app/build/reports/tests/
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
 
   build:
     name: Build release
@@ -70,6 +75,7 @@ jobs:
           BIOGUARD_WEAR_STORE_PASSWORD: ${{ secrets.BIOGUARD_WEAR_STORE_PASSWORD }}
           BIOGUARD_WEAR_KEY_ALIAS: ${{ secrets.BIOGUARD_WEAR_KEY_ALIAS }}
           BIOGUARD_WEAR_KEY_PASSWORD: ${{ secrets.BIOGUARD_WEAR_KEY_PASSWORD }}
+          BIOGUARD_PAIRING_SECRET: ${{ secrets.BIOGUARD_PAIRING_SECRET }}
         run: ./gradlew bundleRelease --no-daemon
 
       - name: Upload AAB

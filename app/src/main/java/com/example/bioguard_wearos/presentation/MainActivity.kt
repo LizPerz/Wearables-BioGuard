@@ -35,12 +35,16 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val bodySensorsGranted = permissions[Manifest.permission.BODY_SENSORS] ?: false
-        val healthHeartRate = permissions["android.permission.health.READ_HEART_RATE"] ?: false
+        val healthHeartRate = if (requiresHealthHeartRatePermission()) {
+            permissions[READ_HEART_RATE_PERMISSION] ?: hasHealthHeartRatePermission()
+        } else {
+            true
+        }
 
         Log.d("BIOGUARD", "Permiso BODY_SENSORS: $bodySensorsGranted")
         Log.d("BIOGUARD", "Permiso READ_HEART_RATE: $healthHeartRate")
 
-        if (bodySensorsGranted || healthHeartRate) {
+        if (bodySensorsGranted && healthHeartRate) {
             sensorsEnabled = true
             Log.d("BIOGUARD", "Permisos concedidos (BODY_SENSORS=$bodySensorsGranted, HR=$healthHeartRate). Iniciando motor...")
             startSensorService()
@@ -53,7 +57,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        sensorsEnabled = hasAnySensorPermission()
+        sensorsEnabled = hasRequiredSensorPermissions()
         requestAppPermissions()
 
         setContent {
@@ -71,26 +75,33 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun hasAnySensorPermission(): Boolean {
+    private fun hasRequiredSensorPermissions(): Boolean {
         val bodySensors = ContextCompat.checkSelfPermission(
             this, Manifest.permission.BODY_SENSORS
         ) == PackageManager.PERMISSION_GRANTED
-
-        val heartRate = try {
-            ContextCompat.checkSelfPermission(
-                this, "android.permission.health.READ_HEART_RATE"
-            ) == PackageManager.PERMISSION_GRANTED
-        } catch (e: Exception) { false }
-
-        return bodySensors || heartRate
+        return bodySensors && hasHealthHeartRatePermission()
     }
 
+    private fun hasHealthHeartRatePermission(): Boolean {
+        if (!requiresHealthHeartRatePermission()) return true
+        return try {
+            ContextCompat.checkSelfPermission(
+                this, READ_HEART_RATE_PERMISSION
+            ) == PackageManager.PERMISSION_GRANTED
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun requiresHealthHeartRatePermission(): Boolean = Build.VERSION.SDK_INT >= 36
+
     private fun requestAppPermissions() {
-        val permissionsToRequest = mutableListOf(
-            Manifest.permission.BODY_SENSORS,
-            "android.permission.health.READ_HEART_RATE",
-            "android.permission.health.READ_BODY_TEMPERATURE"
-        )
+        val permissionsToRequest = mutableListOf(Manifest.permission.BODY_SENSORS)
+
+        if (requiresHealthHeartRatePermission()) {
+            permissionsToRequest.add(READ_HEART_RATE_PERMISSION)
+            permissionsToRequest.add(READ_BODY_TEMPERATURE_PERMISSION)
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -115,8 +126,9 @@ class MainActivity : ComponentActivity() {
     }
 
     fun startSensorService() {
-        if (!hasAnySensorPermission()) {
-            Log.w("BIOGUARD", "Sin permisos de sensores, no se puede iniciar servicio")
+        if (!hasRequiredSensorPermissions()) {
+            Log.w("BIOGUARD", "Faltan permisos requeridos de sensores, no se inicia el servicio")
+            requestAppPermissions()
             return
         }
 
@@ -127,5 +139,10 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e("BIOGUARD", "Error al iniciar servicio: ${e.message}", e)
         }
+    }
+
+    companion object {
+        private const val READ_HEART_RATE_PERMISSION = "android.permission.health.READ_HEART_RATE"
+        private const val READ_BODY_TEMPERATURE_PERMISSION = "android.permission.health.READ_BODY_TEMPERATURE"
     }
 }
