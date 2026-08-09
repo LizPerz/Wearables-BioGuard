@@ -25,6 +25,7 @@ private data class PhoneReadingRequest(
     val sudoracionGsr: Double,
     val hrv: Double? = null,
     val spo2: Double? = null,
+    val pasos: Int? = null,
     val timestamp: String
 )
 
@@ -150,6 +151,7 @@ class SyncRepositoryImpl @Inject constructor(
         temperatura: Float,
         gsr: Float,
         hrv: Float,
+        steps: Int?,
         nivelRiesgo: String
     ): Result<Unit> {
         return try {
@@ -158,6 +160,7 @@ class SyncRepositoryImpl @Inject constructor(
                 temperaturaC = temperatura.toDouble(),
                 sudoracionGsr = gsr.toDouble(),
                 hrv = hrv.toDouble(),
+                pasos = steps,
                 timestamp = Instant.now().toString()
             )
             val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), request)

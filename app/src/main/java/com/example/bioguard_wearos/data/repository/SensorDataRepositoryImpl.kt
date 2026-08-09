@@ -49,6 +49,8 @@ class SensorDataRepositoryImpl(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
     private var heartRateSensor: Sensor? = null
+    private var stepCounterSensor: Sensor? = null
+    private var stepCounterBaseline: Float? = null
 
     private val dataLock = Any()
 
@@ -142,6 +144,7 @@ class SensorDataRepositoryImpl(
         Log.d("BIOGUARD", "sensorManager: ${if (sensorManager != null) "disponible" else "NULL"}")
         Log.d("BIOGUARD", "heartRateSensor HW: ${sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE)?.name ?: "NO DISPONIBLE"}")
         startHeartRateMeasure()
+        startStepCounter()
         temperatureProvider.start()
         startHrvUpdater()
         startPeriodicSave()
@@ -159,6 +162,9 @@ class SensorDataRepositoryImpl(
 
     override fun stopSensors() {
         stopHeartRateMeasure()
+        stepCounterSensor?.let { sensorManager?.unregisterListener(this, it) }
+        stepCounterSensor = null
+        stepCounterBaseline = null
         temperatureProvider.stop()
         heartRateStarted = false
         telemetryScheduler?.stop()
@@ -166,6 +172,20 @@ class SensorDataRepositoryImpl(
 
     private fun startPeriodicSave() {
         telemetryScheduler?.start(scope)
+    }
+
+    private fun startStepCounter() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.i("BIOGUARD", "Step counter unavailable: ACTIVITY_RECOGNITION not granted")
+            return
+        }
+        stepCounterSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        val registered = stepCounterSensor?.let {
+            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+        } ?: false
+        Log.d("BIOGUARD", "Step counter ${if (registered) "enabled" else "not available"}")
     }
 
     private fun processHeartRate(bpm: Float) {
@@ -315,6 +335,15 @@ class SensorDataRepositoryImpl(
     override fun onSensorChanged(event: SensorEvent?) {
         event ?: return
         when (event.sensor?.type) {
+            Sensor.TYPE_STEP_COUNTER -> {
+                val totalSteps = event.values.firstOrNull() ?: return
+                val baseline = stepCounterBaseline ?: totalSteps.also { stepCounterBaseline = it }
+                synchronized(dataLock) {
+                    _sensorData.value = _sensorData.value.copy(
+                        steps = (totalSteps - baseline).coerceAtLeast(0f).toInt()
+                    )
+                }
+            }
             Sensor.TYPE_HEART_RATE -> {
                 if (event.values.isNotEmpty() && event.accuracy > 0) {
                     val bpm = event.values[0]

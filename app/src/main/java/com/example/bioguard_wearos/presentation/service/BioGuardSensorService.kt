@@ -281,6 +281,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 temperatura = data.temperature,
                 gsr = data.gsr,
                 hrv = data.rmssd,
+                steps = data.steps,
                 nivelRiesgo = lastRiskAssessment?.level?.name ?: RiskLevel.OPTIMAL.name
             ).onFailure {
                 Log.d(TAG, "Live telemetry deferred to durable sync: ${it.message}")
@@ -490,6 +491,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             if (data.temperature > 0f) add("temperatura_corporal")
             if (data.rmssd > 0f || data.sdnn > 0f) add("hrv")
             if (data.stressEstimate > 0f) add("estres_estimado")
+            if (data.steps != null) add("pasos")
         }
         val bateria = obtenerBateria() ?: -1
         serviceScope.launch {

@@ -101,6 +101,10 @@ class MainActivity : ComponentActivity() {
     private fun requestAppPermissions() {
         val permissionsToRequest = mutableListOf(Manifest.permission.BODY_SENSORS)
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            permissionsToRequest.add(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+
         if (requiresHealthHeartRatePermission()) {
             permissionsToRequest.add(READ_HEART_RATE_PERMISSION)
             permissionsToRequest.add(READ_BODY_TEMPERATURE_PERMISSION)
