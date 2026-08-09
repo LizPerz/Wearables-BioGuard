@@ -28,7 +28,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.bioguard_wearos"
+        // Wear OS Data Layer pairs apps by application identity and signing certificate.
+        // Keep this aligned with the mobile applicationId; Kotlin packages may remain separate.
+        applicationId = "com.bioguard.movil"
         minSdk = 30
         targetSdk = 36
         versionCode = 1
