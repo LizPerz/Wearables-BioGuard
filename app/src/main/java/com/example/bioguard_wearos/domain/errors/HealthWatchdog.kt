@@ -49,6 +49,11 @@ class HealthWatchdog @Inject constructor(
 
     private fun checkSensorHealth() {
         val currentData = sensorDataRepository.sensorData.value
+        val status = sensorDataRepository.sensorAvailability.value.statusMessage.orEmpty()
+        if (status.contains("permiso", ignoreCase = true)) {
+            Log.w(TAG, "Captura suspendida hasta que el usuario conceda el permiso de frecuencia cardiaca")
+            return
+        }
         if (currentData.bpm <= 0f) {
             Log.w(TAG, "ADVERTENCIA: No se reciben datos de pulso de sensores. Reiniciando subsistema de captura.")
             try {

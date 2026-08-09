@@ -1,11 +1,14 @@
 package com.example.bioguard_wearos.data.repository
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.data.Availability
@@ -125,6 +128,15 @@ class SensorDataRepositoryImpl(
     }
 
     override fun startSensors() {
+        if (!hasHeartRatePermission()) {
+            heartRateStarted = false
+            _sensorAvailability.value = _sensorAvailability.value.copy(
+                heartRateAvailable = false,
+                statusMessage = "Concede el permiso de frecuencia cardiaca para iniciar la medicion"
+            )
+            Log.w("BIOGUARD", "Sensores no iniciados: falta permiso de frecuencia cardiaca")
+            return
+        }
         Log.d("BIOGUARD", "=== startSensors() llamado ===")
         Log.d("BIOGUARD", "measureClient: ${if (measureClient != null) "disponible" else "NULL"}")
         Log.d("BIOGUARD", "sensorManager: ${if (sensorManager != null) "disponible" else "NULL"}")
@@ -133,6 +145,16 @@ class SensorDataRepositoryImpl(
         temperatureProvider.start()
         startHrvUpdater()
         startPeriodicSave()
+    }
+
+    private fun hasHeartRatePermission(): Boolean {
+        val bodySensorsGranted = ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.BODY_SENSORS
+        ) == PackageManager.PERMISSION_GRANTED
+        val healthGranted = Build.VERSION.SDK_INT < 36 || ContextCompat.checkSelfPermission(
+            context, "android.permission.health.READ_HEART_RATE"
+        ) == PackageManager.PERMISSION_GRANTED
+        return bodySensorsGranted && healthGranted
     }
 
     override fun stopSensors() {
