@@ -43,30 +43,9 @@ class SensorManagerTemperatureProvider(
     }
 
     override fun start() {
-        tempSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
-        if (tempSensor != null) {
-            val listener = object : SensorEventListener {
-                override fun onSensorChanged(event: SensorEvent?) {
-                    event ?: return
-                    if (event.sensor?.type == Sensor.TYPE_AMBIENT_TEMPERATURE) {
-                        if (event.values.isNotEmpty() && event.values[0] in 10.0f..50.0f) {
-                            onTemperatureChanged(event.values[0])
-                        }
-                    }
-                }
-
-                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-            }
-
-            tempListener = listener
-            sensorManager?.registerListener(listener, tempSensor, SensorManager.SENSOR_DELAY_NORMAL)
-            _isAvailable = true
-            Log.d("BIOGUARD", "Temperatura real disponible via SensorManager")
-            return
-        }
-
         _isAvailable = false
-        Log.w("BIOGUARD", "Sensor de temperatura HW no disponible. Temperatura desactivada hasta recibir datos reales.")
+        // Ambient temperature is not body temperature and must not feed clinical alerts.
+        Log.i("BIOGUARD", "Body temperature unavailable; ambient sensor is intentionally not used")
     }
 
     override fun stop() {

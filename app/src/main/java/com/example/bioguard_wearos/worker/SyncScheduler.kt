@@ -2,9 +2,7 @@ package com.example.bioguard_wearos.worker
 
 import android.content.Context
 import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,14 +20,9 @@ class SyncScheduler @Inject constructor(
     }
 
     fun schedulePeriodicSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
         val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(
             SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES
         )
-            .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
 

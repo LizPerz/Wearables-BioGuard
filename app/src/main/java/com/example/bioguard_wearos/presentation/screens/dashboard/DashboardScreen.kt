@@ -163,7 +163,7 @@ fun DashboardScreen(
     val sensorData = uiState.sensorData
     val bpmStatus = resolveBpmStatus(sensorData.bpm)
     val tempStatus = resolveTempStatus(sensorData.temperature)
-    val gsrStatus = resolveGsrStatus(sensorData.gsr)
+    val stressStatus = resolveGsrStatus(sensorData.stressEstimate)
 
     Box(
         modifier = Modifier
@@ -208,14 +208,14 @@ fun DashboardScreen(
 
             MetricPill(
                 icon = { Icon(Icons.Rounded.Thermostat, null, Modifier.size(16.dp), tint = metricIconTint(tempStatus)) },
-                value = String.format("%.1f", sensorData.temperature),
+                value = if (sensorData.temperature > 0f) String.format("%.1f", sensorData.temperature) else "--",
                 label = "°C",
                 fillFraction = sensorData.tempFraction,
                 gradientColors = metricColors(tempStatus),
                 onClick = {
                     viewModel.showDetailDialog(
                         "Temperatura",
-                        String.format("%.1f", sensorData.temperature),
+                        if (sensorData.temperature > 0f) String.format("%.1f", sensorData.temperature) else "No disponible",
                         "°C",
                         DetailIcon.THERMOMETER
                     )
@@ -224,16 +224,16 @@ fun DashboardScreen(
             Spacer(modifier = Modifier.height(4.dp))
 
             MetricPill(
-                icon = { Icon(Icons.Rounded.WaterDrop, null, Modifier.size(16.dp), tint = metricIconTint(gsrStatus)) },
-                value = String.format("%.0f", sensorData.gsr),
-                label = "µS",
-                fillFraction = sensorData.gsrFraction,
-                gradientColors = metricColors(gsrStatus),
+                icon = { Icon(Icons.Rounded.WaterDrop, null, Modifier.size(16.dp), tint = metricIconTint(stressStatus)) },
+                value = String.format("%.0f", sensorData.stressEstimate),
+                label = "estres est.",
+                fillFraction = (sensorData.stressEstimate / 100f).coerceIn(0f, 1f),
+                gradientColors = metricColors(stressStatus),
                 onClick = {
                     viewModel.showDetailDialog(
                         "Estrés (HRV)",
-                        String.format("%.0f", sensorData.gsr),
-                        "µS",
+                        String.format("%.0f", sensorData.stressEstimate),
+                        "indice",
                         DetailIcon.DROPS,
                         hrvRmssd = sensorData.rmssd,
                         hrvSdnn = sensorData.sdnn,

@@ -62,12 +62,7 @@ class SensorDataRepositoryImpl(
         TelemetrySaveScheduler(it, _sensorData)
     }
 
-    private val temperatureProvider: TemperatureProvider = SensorManagerTemperatureProvider(context) { tempCelsius ->
-        synchronized(dataLock) {
-            _sensorData.value = _sensorData.value.copy(temperature = tempCelsius)
-        }
-        _sensorAvailability.value = _sensorAvailability.value.copy(temperatureAvailable = true)
-    }
+    private val temperatureProvider: TemperatureProvider = SensorManagerTemperatureProvider(context) { _ -> }
 
     init {
         temperatureProvider.bindToHeartRate(_sensorData)
@@ -162,7 +157,7 @@ class SensorDataRepositoryImpl(
         val riskAssessment = RiskAssessment.fromBiometrics(
             bpm = bpm,
             temp = temp,
-            gsr = stressUs,
+            gsr = 0f,
             thresholds = riskThresholdController.current
         )
         if (riskAssessment.level.isElevated) {
@@ -172,9 +167,9 @@ class SensorDataRepositoryImpl(
         synchronized(dataLock) {
             _sensorData.value = _sensorData.value.copy(
                 bpm = bpm,
-                gsr = stressUs,
                 rmssd = rmssd,
                 sdnn = sdnn,
+                stressEstimate = stressUs,
                 stressLabel = label
             )
         }
@@ -194,13 +189,12 @@ class SensorDataRepositoryImpl(
 
                     synchronized(dataLock) {
                         _sensorData.value = _sensorData.value.copy(
-                            gsr = stressUs,
                             rmssd = rmssd,
                             sdnn = sdnn,
+                            stressEstimate = stressUs,
                             stressLabel = label
                         )
                     }
-                    _sensorAvailability.value = _sensorAvailability.value.copy(gsrAvailable = true)
                 }
                 delay(1000)
             }

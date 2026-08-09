@@ -34,7 +34,10 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val bodySensorsGranted = permissions[Manifest.permission.BODY_SENSORS] ?: false
+        // The result map only contains permissions requested in this invocation.
+        // Preserve previously granted permissions when just one health permission is requested.
+        val bodySensorsGranted = permissions[Manifest.permission.BODY_SENSORS]
+            ?: (ContextCompat.checkSelfPermission(this, Manifest.permission.BODY_SENSORS) == PackageManager.PERMISSION_GRANTED)
         val healthHeartRate = if (requiresHealthHeartRatePermission()) {
             permissions[READ_HEART_RATE_PERMISSION] ?: hasHealthHeartRatePermission()
         } else {

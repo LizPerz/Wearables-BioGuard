@@ -7,6 +7,7 @@ import com.example.bioguard_wearos.data.bluetooth.PriorityMessageQueue
 import com.example.bioguard_wearos.data.local.BioGuardPreferences
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
 import com.example.bioguard_wearos.domain.repository.SyncRepository
+import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
@@ -66,6 +67,7 @@ class SyncRepositoryImpl @Inject constructor(
 
     companion object {
         private const val TAG = "BIOGUARD_SYNC"
+        private const val BIOGUARD_MOBILE_CAPABILITY = "bioguard_mobile"
     }
 
     /**
@@ -91,14 +93,23 @@ class SyncRepositoryImpl @Inject constructor(
 
     private suspend fun sendMessageToPhoneInternal(path: String, payloadJson: String): Boolean {
         return try {
-            val nodeClient = Wearable.getNodeClient(context)
+            val capabilityClient = Wearable.getCapabilityClient(context)
             val messageClient = Wearable.getMessageClient(context)
-            val nodes = nodeClient.connectedNodes.await().filter { it.isNearby }
-            if (nodes.isEmpty()) {
-                Log.w(TAG, "No hay telefonos cercanos para enviar mensaje a $path")
+            val capabilityNodes = runCatching {
+                capabilityClient.getCapability(
+                    BIOGUARD_MOBILE_CAPABILITY,
+                    CapabilityClient.FILTER_REACHABLE
+                ).await().nodes
+                    .filter { it.isNearby }
+            }.onFailure { e ->
+                Log.w(TAG, "No se pudo resolver capability movil: ${e.message}")
+            }.getOrDefault(emptyList())
+
+            if (capabilityNodes.isEmpty()) {
+                Log.w(TAG, "No reachable BioGuard mobile capability for $path")
                 return false
             }
-            for (node in nodes) {
+            for (node in capabilityNodes) {
                 messageClient.sendMessage(node.id, path, payloadJson.toByteArray(Charsets.UTF_8)).await()
             }
             Log.d(TAG, "Mensaje enviado exitosamente a $path")
@@ -138,6 +149,7 @@ class SyncRepositoryImpl @Inject constructor(
         bpm: Float,
         temperatura: Float,
         gsr: Float,
+        hrv: Float,
         nivelRiesgo: String
     ): Result<Unit> {
         return try {
@@ -145,6 +157,7 @@ class SyncRepositoryImpl @Inject constructor(
                 pulsoBpm = bpm.toDouble(),
                 temperaturaC = temperatura.toDouble(),
                 sudoracionGsr = gsr.toDouble(),
+                hrv = hrv.toDouble(),
                 timestamp = Instant.now().toString()
             )
             val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), request)

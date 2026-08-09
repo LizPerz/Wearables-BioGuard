@@ -65,6 +65,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         private const val GSR_SIGNIFICANT_CHANGE = 3f
         private const val RISK_EVAL_INTERVAL_MS = 3000L
         private const val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L
+        private const val LIVE_TELEMETRY_INTERVAL_MS = 15_000L
         private const val FLUSH_INTERVAL_MS = 60_000L
         private const val BATTERY_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private val BATTERY_THRESHOLDS = intArrayOf(30, 15, 5)
@@ -112,6 +113,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private val batteryThresholdsNotified = mutableSetOf<Int>()
     private var criticalEpisodeActive = false
     private var lastRiskAssessment: RiskAssessment? = null
+    private var lastLiveTelemetryTimestamp = 0L
 
     override fun onBind(intent: Intent?): IBinder = binder
 
@@ -263,7 +265,25 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             sensorDataRepository.sensorData.collect { data ->
                 _currentData.value = data
                 updateNotification()
-                saveReading(data)
+                sendLiveTelemetryIfDue(data)
+            }
+        }
+    }
+
+    private fun sendLiveTelemetryIfDue(data: SensorData) {
+        if (data.bpm <= 0f) return
+        val now = System.currentTimeMillis()
+        if (now - lastLiveTelemetryTimestamp < LIVE_TELEMETRY_INTERVAL_MS) return
+        lastLiveTelemetryTimestamp = now
+        serviceScope.launch {
+            syncRepository.enviarLecturaLive(
+                bpm = data.bpm,
+                temperatura = data.temperature,
+                gsr = data.gsr,
+                hrv = data.rmssd,
+                nivelRiesgo = lastRiskAssessment?.level?.name ?: RiskLevel.OPTIMAL.name
+            ).onFailure {
+                Log.d(TAG, "Live telemetry deferred to durable sync: ${it.message}")
             }
         }
     }
@@ -467,9 +487,9 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         val data = _currentData.value
         val sensores = buildList {
             if (data.bpm > 0f) add("pulso")
-            if (data.temperature > 0f) add("temperatura")
-            if (data.gsr > 0f) add("sudoracion")
+            if (data.temperature > 0f) add("temperatura_corporal")
             if (data.rmssd > 0f || data.sdnn > 0f) add("hrv")
+            if (data.stressEstimate > 0f) add("estres_estimado")
         }
         val bateria = obtenerBateria() ?: -1
         serviceScope.launch {

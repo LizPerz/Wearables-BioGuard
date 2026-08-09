@@ -6,6 +6,7 @@ data class SensorData(
     val gsr: Float = 0f,
     val rmssd: Float = 0f,
     val sdnn: Float = 0f,
+    val stressEstimate: Float = 0f,
     val stressLabel: String = ""
 ) {
     val hrFraction: Float

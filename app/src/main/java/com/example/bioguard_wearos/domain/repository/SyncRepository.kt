@@ -19,6 +19,7 @@ interface SyncRepository {
         bpm: Float,
         temperatura: Float,
         gsr: Float,
+        hrv: Float,
         nivelRiesgo: String
     ): Result<Unit>
 
