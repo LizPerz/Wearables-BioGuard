@@ -224,7 +224,9 @@ class SyncRepositoryImpl @Inject constructor(
                 count++
             } else {
                 Log.w(TAG, "Fallo al enviar lectura ${reading.id} al telefono cercano. Abortando ciclo.")
-                break
+                return Result.failure(
+                    IllegalStateException("No se encontro un movil BioGuard alcanzable")
+                )
             }
         }
         return Result.success(count)
