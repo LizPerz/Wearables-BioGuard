@@ -21,6 +21,13 @@ interface SyncRepository {
         gsr: Float,
         hrv: Float,
         steps: Int?,
+        spo2: Float? = null,
+        accelX: Float? = null,
+        accelY: Float? = null,
+        accelZ: Float? = null,
+        grasaPct: Float? = null,
+        masaMuscular: Float? = null,
+        faseSueno: String? = null,
         nivelRiesgo: String
     ): Result<Unit>
 

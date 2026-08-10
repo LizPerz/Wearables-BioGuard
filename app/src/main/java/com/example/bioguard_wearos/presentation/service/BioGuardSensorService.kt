@@ -67,7 +67,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         private const val GSR_SIGNIFICANT_CHANGE = 3f
         private const val RISK_EVAL_INTERVAL_MS = 3000L
         private const val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L
-        private const val LIVE_TELEMETRY_INTERVAL_MS = 15_000L
+        private const val LIVE_TELEMETRY_INTERVAL_MS = 30_000L
         private const val FLUSH_INTERVAL_MS = 60_000L
         private const val BATTERY_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private val BATTERY_THRESHOLDS = intArrayOf(30, 15, 5)
@@ -138,6 +138,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         startRiskEvaluationLoop()
         startBatteryMonitor()
         startHeartbeatLoop()
+        startDurableSyncLoop()
         
         try {
             Wearable.getMessageClient(this).addListener(this)
@@ -295,6 +296,13 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 gsr = validGsr,
                 hrv = data.rmssd,
                 steps = data.steps,
+                spo2 = data.spo2,
+                accelX = data.accelX,
+                accelY = data.accelY,
+                accelZ = data.accelZ,
+                grasaPct = data.bodyFatPercent,
+                masaMuscular = data.muscleMassKg,
+                faseSueno = data.sleepStage,
                 nivelRiesgo = lastRiskAssessment?.level?.name ?: RiskLevel.OPTIMAL.name
             ).onFailure {
                 Log.d(TAG, "Live telemetry deferred to durable sync: ${it.message}")
@@ -497,6 +505,24 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             while (true) {
                 enviarHeartbeat()
                 delay(HEARTBEAT_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun startDurableSyncLoop() {
+        serviceScope.launch {
+            while (true) {
+                delay(FLUSH_INTERVAL_MS)
+                try {
+                    val result = syncRepository.syncPendingReadings()
+                    result.onSuccess { count ->
+                        if (count > 0) {
+                            Log.d(TAG, "Sincronización periódica vació $count lecturas pendientes de Room al móvil")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "Error en ciclo de sincronización duradera: ${e.message}")
+                }
             }
         }
     }

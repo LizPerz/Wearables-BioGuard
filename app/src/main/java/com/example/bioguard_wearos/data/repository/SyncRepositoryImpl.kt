@@ -26,6 +26,12 @@ private data class PhoneReadingRequest(
     val hrv: Double? = null,
     val spo2: Double? = null,
     val pasos: Int? = null,
+    val accelX: Double? = null,
+    val accelY: Double? = null,
+    val accelZ: Double? = null,
+    val grasaCorporalPct: Double? = null,
+    val masaMuscularKg: Double? = null,
+    val faseSueno: String? = null,
     val timestamp: String,
     val sourceMessageId: String = java.util.UUID.randomUUID().toString()
 )
@@ -167,6 +173,13 @@ class SyncRepositoryImpl @Inject constructor(
         gsr: Float,
         hrv: Float,
         steps: Int?,
+        spo2: Float?,
+        accelX: Float?,
+        accelY: Float?,
+        accelZ: Float?,
+        grasaPct: Float?,
+        masaMuscular: Float?,
+        faseSueno: String?,
         nivelRiesgo: String
     ): Result<Unit> {
         return try {
@@ -175,7 +188,14 @@ class SyncRepositoryImpl @Inject constructor(
                 temperaturaC = temperatura.toDouble(),
                 sudoracionGsr = gsr.toDouble(),
                 hrv = hrv.toDouble(),
+                spo2 = spo2?.toDouble(),
                 pasos = steps,
+                accelX = accelX?.toDouble(),
+                accelY = accelY?.toDouble(),
+                accelZ = accelZ?.toDouble(),
+                grasaCorporalPct = grasaPct?.toDouble(),
+                masaMuscularKg = masaMuscular?.toDouble(),
+                faseSueno = faseSueno,
                 timestamp = Instant.now().toString()
             )
             val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), request)

@@ -49,7 +49,8 @@ import java.util.Locale
 
 @Composable
 fun CriticalAlertScreen(
-    viewModel: CriticalAlertViewModel
+    viewModel: CriticalAlertViewModel,
+    onDismissed: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -75,7 +76,10 @@ fun CriticalAlertScreen(
         pulseAlpha = pulseAlpha,
         helpRequested = uiState.helpRequested,
         helpSent = uiState.helpSent,
-        onDismiss = { viewModel.acknowledgeAlert(context) },
+        onDismiss = {
+            viewModel.acknowledgeAlert(context)
+            onDismissed()
+        },
         onHelp = { viewModel.requestHelp(context) }
     )
 }

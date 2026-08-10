@@ -59,7 +59,7 @@ class TelemetrySaveScheduler(
     }
 
     companion object {
-        const val INTERVAL_MS = 10_000L
+        const val INTERVAL_MS = 30_000L
         const val DEFAULT_BMI = 24.0f
     }
 }

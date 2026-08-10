@@ -124,7 +124,14 @@ fun BioGuardNavHost(
             val viewModel: CriticalAlertViewModel = hiltViewModel()
 
             CriticalAlertScreen(
-                viewModel = viewModel
+                viewModel = viewModel,
+                onDismissed = {
+                    runCatching {
+                        navController.navigate(Screen.Dashboard) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
             )
         }
     }
