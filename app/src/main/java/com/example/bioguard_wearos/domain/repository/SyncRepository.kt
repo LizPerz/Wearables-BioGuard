@@ -28,6 +28,7 @@ interface SyncRepository {
         grasaPct: Float? = null,
         masaMuscular: Float? = null,
         faseSueno: String? = null,
+        glucosaEstimadaMgDl: Float? = null,
         nivelRiesgo: String
     ): Result<Unit>
 

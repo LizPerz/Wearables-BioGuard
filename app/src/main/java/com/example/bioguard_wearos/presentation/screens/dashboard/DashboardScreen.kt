@@ -263,6 +263,31 @@ fun DashboardScreen(
             }
 
             item {
+                val glucoseVal = sensorData.estimatedGlucoseMgDl
+                val glucoseStatus = when {
+                    glucoseVal > 140f -> MetricStatus.CRITICAL
+                    glucoseVal < 70f -> MetricStatus.MODERATE
+                    else -> MetricStatus.OPTIMAL
+                }
+                MetricPill(
+                    icon = { Text("🩸", fontSize = 12.sp) },
+                    value = String.format(Locale.ROOT, "%.0f", glucoseVal),
+                    label = "mg/dL Glucosa",
+                    fillFraction = ((glucoseVal - 70f) / 150f).coerceIn(0.05f, 1f),
+                    gradientColors = metricColors(glucoseStatus),
+                    contentWidth = contentWidth,
+                    onClick = {
+                        viewModel.showDetailDialog(
+                            "Glucosa Estimada",
+                            String.format(Locale.ROOT, "%.0f", glucoseVal),
+                            "mg/dL",
+                            DetailIcon.DROPS
+                        )
+                    }
+                )
+            }
+
+            item {
                 CompactButton(
                     onClick = { viewModel.triggerPanicButton() },
                     contentWidth = contentWidth,

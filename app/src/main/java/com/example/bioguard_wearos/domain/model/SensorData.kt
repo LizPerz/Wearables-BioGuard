@@ -18,7 +18,8 @@ data class SensorData(
     val sweatLossMl: Float = 0f,
     val sleepStage: String = "DESPIERTO",
     val sleepApneaRisk: String = "NORMAL",
-    val ihrnEventCount: Int = 0
+    val ihrnEventCount: Int = 0,
+    val estimatedGlucoseMgDl: Float = 95.0f
 ) {
     val hrFraction: Float
         get() = if (bpm > 0f) ((bpm - HR_MIN) / (HR_MAX - HR_MIN)).coerceIn(0f, 1f) else 0.05f

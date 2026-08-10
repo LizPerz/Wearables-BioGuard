@@ -232,6 +232,13 @@ class SensorDataRepositoryImpl(
             Log.w("BIOGUARD_RISK", "Evaluación de riesgo local elevada: ${riskAssessment.level.label} (Prob=${riskAssessment.probability})")
         }
 
+        val calculatedGlucose = (95.0f +
+                (bpm - 72.0f) * 0.45f +
+                (currentTemp - 36.6f) * 12.0f +
+                kotlin.math.max(0.0f, currentGsr - 45.0f) * 0.5f +
+                kotlin.math.max(0.0f, 45.0f - rmssd) * 0.4f
+        ).coerceIn(70.0f, 220.0f)
+
         synchronized(dataLock) {
             _sensorData.value = _sensorData.value.copy(
                 bpm = bpm,
@@ -240,7 +247,8 @@ class SensorDataRepositoryImpl(
                 rmssd = rmssd,
                 sdnn = sdnn,
                 stressEstimate = stressUs,
-                stressLabel = label
+                stressLabel = label,
+                estimatedGlucoseMgDl = calculatedGlucose
             )
         }
     }

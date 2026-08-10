@@ -303,6 +303,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 grasaPct = data.bodyFatPercent,
                 masaMuscular = data.muscleMassKg,
                 faseSueno = data.sleepStage,
+                glucosaEstimadaMgDl = data.estimatedGlucoseMgDl,
                 nivelRiesgo = lastRiskAssessment?.level?.name ?: RiskLevel.OPTIMAL.name
             ).onFailure {
                 Log.d(TAG, "Live telemetry deferred to durable sync: ${it.message}")
