@@ -1,4 +1,3 @@
 <resources>
-    <string name="app_name">BioGuard_WearOs</string>
-    <string name="hello_world">Hello, %1$s!</string>
+    <string name="app_name">BioGuard</string>
 </resources>

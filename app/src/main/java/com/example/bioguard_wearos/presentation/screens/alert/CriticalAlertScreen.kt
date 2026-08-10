@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -28,10 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Button
@@ -65,6 +63,8 @@ fun CriticalAlertScreen(
         label = "pulseAlpha"
     )
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     CriticalAlertContent(
         bpm = uiState.bpm,
         temperature = uiState.temperature,
@@ -73,8 +73,10 @@ fun CriticalAlertScreen(
         countdownSeconds = uiState.countdownSeconds,
         isCountdownActive = uiState.isCountdownActive,
         pulseAlpha = pulseAlpha,
-        onDismiss = { viewModel.dismissAlert() },
-        onHelp = { viewModel.requestHelp() }
+        helpRequested = uiState.helpRequested,
+        helpSent = uiState.helpSent,
+        onDismiss = { viewModel.acknowledgeAlert(context) },
+        onHelp = { viewModel.requestHelp(context) }
     )
 }
 
@@ -87,10 +89,12 @@ private fun CriticalAlertContent(
     countdownSeconds: Int,
     isCountdownActive: Boolean,
     pulseAlpha: Float,
+    helpRequested: Boolean,
+    helpSent: Boolean,
     onDismiss: () -> Unit,
     onHelp: () -> Unit
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -105,16 +109,26 @@ private fun CriticalAlertContent(
             ),
         contentAlignment = Alignment.Center
     ) {
+        val contentWidth = maxWidth * 0.85f
+        val iconSize = if (maxWidth < 200.dp) 34.dp else 40.dp
+        val countdownSize = if (maxWidth < 200.dp) 34.dp else 40.dp
+        val buttonHeight = if (maxWidth < 200.dp) 28.dp else 32.dp
+        val titleSize = if (maxWidth < 200.dp) 12.sp else 14.sp
+        val valueSize = if (maxWidth < 200.dp) 10.sp else 12.sp
+        val labelSize = if (maxWidth < 200.dp) 7.sp else 8.sp
+        val countdownTextSize = if (maxWidth < 200.dp) 14.sp else 16.sp
+        val helpTextSize = if (maxWidth < 200.dp) 9.sp else 10.sp
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(iconSize)
                     .alpha(pulseAlpha)
                     .background(
                         Brush.radialGradient(
@@ -127,17 +141,17 @@ private fun CriticalAlertContent(
                 Text(
                     text = "!",
                     color = BioGuardOnSurface,
-                    fontSize = 24.sp,
+                    fontSize = titleSize,
                     fontWeight = FontWeight.ExtraBold
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = "ALERTA CR\u00cdTICA",
                 color = BioGuardError,
-                fontSize = 14.sp,
+                fontSize = titleSize,
                 fontWeight = FontWeight.ExtraBold
             )
 
@@ -146,35 +160,35 @@ private fun CriticalAlertContent(
             Text(
                 text = "Pico de riesgo detectado",
                 color = BioGuardOnSurfaceVariant,
-                fontSize = 9.sp
+                fontSize = labelSize
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                VitalColumn("BPM", String.format(Locale.US, "%.0f", bpm))
-                VitalColumn("Temp", String.format(Locale.US, "%.1f", temperature))
-                VitalColumn("GSR", String.format(Locale.US, "%.0f", gsr))
+                VitalColumn("BPM", String.format(Locale.US, "%.0f", bpm), labelSize, valueSize)
+                VitalColumn("Temp", String.format(Locale.US, "%.1f", temperature), labelSize, valueSize)
+                VitalColumn("GSR", String.format(Locale.US, "%.0f", gsr), labelSize, valueSize)
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = "P(Pico): ${String.format(Locale.US, "%.1f", probability * 100)}%",
                 color = BioGuardPrimary,
-                fontSize = 10.sp,
+                fontSize = labelSize,
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             if (isCountdownActive) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(countdownSize)
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(BioGuardSurface, BioGuardBackground)
@@ -186,44 +200,56 @@ private fun CriticalAlertContent(
                     Text(
                         text = "$countdownSeconds",
                         color = BioGuardError,
-                        fontSize = 18.sp,
+                        fontSize = countdownTextSize,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Text(
                     text = "Auto-env\u00edo a red familiar",
                     color = BioGuardOnSurfaceVariant,
-                    fontSize = 8.sp,
-                    textAlign = TextAlign.Center
+                    fontSize = labelSize,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (helpRequested) {
+                Text(
+                    text = if (helpSent) "AYUDA ENVIADA" else "SOLICITANDO AYUDA...",
+                    color = if (helpSent) BioGuardPrimary else BioGuardError,
+                    fontSize = helpTextSize,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier
                         .weight(1f)
-                        .height(34.dp),
-                    shape = RoundedCornerShape(17.dp),
+                        .height(buttonHeight),
+                    shape = RoundedCornerShape(buttonHeight / 2),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = BioGuardSurface
                     )
                 ) {
                     Text(
-                        text = "ESTOY BIEN",
+                        text = "ATENDIDO",
                         color = BioGuardOnSurface,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
+                        fontSize = labelSize,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                        maxLines = 1
                     )
                 }
 
@@ -231,8 +257,8 @@ private fun CriticalAlertContent(
                     onClick = onHelp,
                     modifier = Modifier
                         .weight(1f)
-                        .height(34.dp),
-                    shape = RoundedCornerShape(17.dp),
+                        .height(buttonHeight),
+                    shape = RoundedCornerShape(buttonHeight / 2),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = BioGuardError
                     )
@@ -241,9 +267,9 @@ private fun CriticalAlertContent(
                         text = "AYUDA",
                         color = BioGuardOnSurface,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
+                        fontSize = labelSize,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                        maxLines = 1
                     )
                 }
             }
@@ -264,34 +290,14 @@ private fun CriticalAlertScreenPreview() {
         CriticalAlertContent(
             bpm = 125f, temperature = 34.5f, gsr = 92f, probability = 0.92f,
             countdownSeconds = 45, isCountdownActive = true, pulseAlpha = pulseAlpha,
-            onDismiss = {}, onHelp = {}
-        )
-    }
-}
-
-@Preview(
-    device = "spec:width=454.0dp,height=454.0dp,dpi=326,isRound=true",
-    showBackground = true,
-    backgroundColor = 0xFF000000
-)
-@Composable
-private fun CriticalAlertScreenRoundPreview() {
-    val pulseAlpha by rememberInfiniteTransition(label = "pulse").animateFloat(
-        initialValue = 0.4f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(500, easing = LinearEasing), RepeatMode.Reverse),
-        label = "pulseAlpha"
-    )
-    BioGuard_WearOsTheme {
-        CriticalAlertContent(
-            bpm = 125f, temperature = 34.5f, gsr = 92f, probability = 0.92f,
-            countdownSeconds = 12, isCountdownActive = true, pulseAlpha = pulseAlpha,
+            helpRequested = false, helpSent = false,
             onDismiss = {}, onHelp = {}
         )
     }
 }
 
 @Composable
-private fun RowScope.VitalColumn(label: String, value: String) {
+private fun RowScope.VitalColumn(label: String, value: String, labelSize: androidx.compose.ui.unit.TextUnit, valueSize: androidx.compose.ui.unit.TextUnit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.weight(1f)
@@ -299,12 +305,12 @@ private fun RowScope.VitalColumn(label: String, value: String) {
         Text(
             text = label,
             color = BioGuardOnSurfaceVariant,
-            fontSize = 8.sp
+            fontSize = labelSize
         )
         Text(
             text = value,
             color = BioGuardOnSurface,
-            fontSize = 12.sp,
+            fontSize = valueSize,
             fontWeight = FontWeight.Bold
         )
     }

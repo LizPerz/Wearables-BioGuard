@@ -15,3 +15,10 @@
 local.properties
 keystore.properties
 !keystore.properties.example
+*.apk
+*.aab
+*.ap_
+*.keystore
+*.jks
+*.p12
+*.jceks

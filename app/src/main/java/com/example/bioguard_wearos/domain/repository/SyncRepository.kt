@@ -54,4 +54,6 @@ interface SyncRepository {
         temperatura: Float,
         gsr: Float
     ): Result<Unit>
+
+    suspend fun sendDismissCommandToPhone(): Result<Unit>
 }

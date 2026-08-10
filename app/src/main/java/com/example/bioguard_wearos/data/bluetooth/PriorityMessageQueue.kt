@@ -1,101 +1,70 @@
 package com.example.bioguard_wearos.data.bluetooth
 
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import com.example.bioguard_wearos.data.local.db.OutboundMessageDao
+import com.example.bioguard_wearos.data.local.db.OutboundMessageEntity
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import java.util.PriorityQueue
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
 enum class MessagePriority(val level: Int) {
-    EMERGENCY(1),   // Botón de pánico, Alertas nocturnas críticas
-    ALERT(2),       // Estado de batería baja, alertas de dispositivo
-    TELEMETRY(3),   // Lecturas de sensores periódicas
-    HEARTBEAT(4)    // Heartbeat rutinario
-}
-
-data class QueuedMessage(
-    val id: String,
-    val path: String,
-    val payloadJson: String,
-    val priority: MessagePriority,
-    val timestamp: Long = System.currentTimeMillis(),
-    val sendAction: suspend (path: String, payloadJson: String) -> Boolean
-) : Comparable<QueuedMessage> {
-    override fun compareTo(other: QueuedMessage): Int {
-        val priorityCompare = this.priority.level.compareTo(other.priority.level)
-        if (priorityCompare != 0) return priorityCompare
-        return this.timestamp.compareTo(other.timestamp)
-    }
+    EMERGENCY(1), ALERT(2), TELEMETRY(3), HEARTBEAT(4)
 }
 
 @Singleton
-class PriorityMessageQueue @Inject constructor() {
-
+class PriorityMessageQueue @Inject constructor(
+    private val dao: OutboundMessageDao
+) {
     companion object {
         private const val TAG = "BIOGUARD_PRIORITY_QUEUE"
-        private const val MAX_RETRIES = 5
+        private const val MAX_ATTEMPTS_PER_RUN = 5
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val queue = PriorityQueue<QueuedMessage>()
-    private val lock = Any()
-    @Volatile private var isProcessing = false
+    private val consumerMutex = Mutex()
 
-    fun enqueue(
+    suspend fun enqueue(
         id: String,
         path: String,
         payloadJson: String,
         priority: MessagePriority,
         sendAction: suspend (path: String, payloadJson: String) -> Boolean
     ) {
-        synchronized(lock) {
-            val message = QueuedMessage(id, path, payloadJson, priority, sendAction = sendAction)
-            queue.add(message)
-            Log.d(TAG, "Mensaje encolado [Prioridad ${priority.name}]: $path (Total en cola: ${queue.size})")
-        }
-        processQueue()
+        dao.insert(
+            OutboundMessageEntity(
+                id = id,
+                path = path,
+                payloadJson = payloadJson,
+                priority = priority.level
+            )
+        )
+        Log.d(TAG, "Mensaje persistido [${priority.name}]: $path")
+        drain(sendAction)
     }
 
-    private fun processQueue() {
-        if (isProcessing) return
-        scope.launch {
-            isProcessing = true
+    suspend fun drain(sendAction: suspend (path: String, payloadJson: String) -> Boolean) {
+        consumerMutex.withLock {
             while (true) {
-                val nextMessage: QueuedMessage = synchronized(lock) {
-                    queue.poll()
-                } ?: break
-
-                var attempt = 0
-                var success = false
-                val action = nextMessage.sendAction
-                val path = nextMessage.path
-                val payload = nextMessage.payloadJson
-
-                while (attempt < MAX_RETRIES && !success) {
-                    attempt++
-                    try {
-                        success = action(path, payload)
-                        if (success) {
-                            Log.d(TAG, "Mensaje enviado con éxito: $path")
-                        } else {
-                            Log.w(TAG, "Fallo al enviar $path (Intento $attempt/$MAX_RETRIES)")
-                            delay(1000L * attempt) // Backoff exponencial
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Excepción enviando $path: ${e.message}")
-                        delay(1000L * attempt)
+                val message = dao.next() ?: return
+                var delivered = false
+                repeat(MAX_ATTEMPTS_PER_RUN) { attempt ->
+                    if (delivered) return@repeat
+                    delivered = runCatching { sendAction(message.path, message.payloadJson) }
+                        .onFailure { Log.w(TAG, "Error enviando ${message.path}: ${it.message}") }
+                        .getOrDefault(false)
+                    if (!delivered) {
+                        dao.incrementAttempts(message.id)
+                        delay(1_000L shl attempt.coerceAtMost(4))
                     }
                 }
-
-                if (!success && nextMessage.priority == MessagePriority.EMERGENCY) {
-                    Log.e(TAG, "FALLO CRÍTICO: No se pudo entregar mensaje de emergencia $path")
+                if (!delivered) {
+                    Log.w(TAG, "Mensaje conservado para reintento posterior: ${message.path}")
+                    return
                 }
+                dao.delete(message.id)
+                Log.d(TAG, "Mensaje confirmado y retirado de cola: ${message.path}")
             }
-            isProcessing = false
         }
     }
 }

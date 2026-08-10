@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,6 +25,14 @@ class HealthWatchdog @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     @Volatile private var isRunning = false
+    
+    private val _sensorDegraded = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val sensorDegraded: kotlinx.coroutines.flow.StateFlow<Boolean> = _sensorDegraded.asStateFlow()
+
+    fun reportSensorFailure(sensorName: String) {
+        _sensorDegraded.value = true
+        Log.w(TAG, "Sensor degradado: $sensorName")
+    }
 
     fun start() {
         if (isRunning) return

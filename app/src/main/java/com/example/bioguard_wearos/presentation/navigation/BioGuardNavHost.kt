@@ -42,6 +42,10 @@ fun BioGuardNavHost(
             navController.navigate(Screen.CriticalAlert) {
                 launchSingleTop = true
             }
+        } else if (previousAlertActive && !isActive) {
+            runCatching {
+                navController.popBackStack(Screen.Dashboard, inclusive = false)
+            }
         }
         previousAlertActive = isActive
     }

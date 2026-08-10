@@ -7,8 +7,8 @@ import com.example.bioguard_wearos.data.bluetooth.PriorityMessageQueue
 import com.example.bioguard_wearos.data.local.BioGuardPreferences
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
 import com.example.bioguard_wearos.domain.repository.SyncRepository
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.wearable.CapabilityClient
-import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.Serializable
@@ -26,7 +26,8 @@ private data class PhoneReadingRequest(
     val hrv: Double? = null,
     val spo2: Double? = null,
     val pasos: Int? = null,
-    val timestamp: String
+    val timestamp: String,
+    val sourceMessageId: String = java.util.UUID.randomUUID().toString()
 )
 
 @Serializable
@@ -69,52 +70,66 @@ class SyncRepositoryImpl @Inject constructor(
     companion object {
         private const val TAG = "BIOGUARD_SYNC"
         private const val BIOGUARD_MOBILE_CAPABILITY = "bioguard_mobile"
-    }
-
-    /**
-     * Utiliza Wearable DataClient (DataItems) para sincronización eficiente de telemetría continua
-     * reduciendo el uso de radio Bluetooth y evitando descarte de paquetes.
-     */
-    private suspend fun sendDataClientItem(path: String, payloadJson: String): Result<Unit> {
-        return try {
-            val dataClient = Wearable.getDataClient(context)
-            val putDataMapReq = PutDataMapRequest.create(path).apply {
-                dataMap.putString("payload", payloadJson)
-                dataMap.putLong("timestamp", System.currentTimeMillis())
-            }
-            val putDataReq = putDataMapReq.asPutDataRequest().setUrgent()
-            dataClient.putDataItem(putDataReq).await()
-            Log.d(TAG, "DataClient Item publicado en $path")
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error publicando DataItem en $path: ${e.message}", e)
-            Result.failure(e)
-        }
+        private const val STATUS_API_NOT_CONNECTED = 17
+        private const val STATUS_TARGET_NODE_NOT_FOUND = 8
     }
 
     private suspend fun sendMessageToPhoneInternal(path: String, payloadJson: String): Boolean {
         return try {
+            val trustedNodeId = preferences.getTrustedMobileNodeId()
             val capabilityClient = Wearable.getCapabilityClient(context)
             val messageClient = Wearable.getMessageClient(context)
-            val capabilityNodes = runCatching {
+            val allReachableMobileNodes = runCatching {
                 capabilityClient.getCapability(
                     BIOGUARD_MOBILE_CAPABILITY,
                     CapabilityClient.FILTER_REACHABLE
-                ).await().nodes
-                    .filter { it.isNearby }
+                ).await().nodes.filter { it.isNearby }
             }.onFailure { e ->
-                Log.w(TAG, "No se pudo resolver capability movil: ${e.message}")
+                val statusCode = (e as? ApiException)?.statusCode
+                when (statusCode) {
+                    STATUS_API_NOT_CONNECTED -> Log.e(TAG, "Wearable Data Layer API no conectada. Verifica emparejamiento del reloj.")
+                    STATUS_TARGET_NODE_NOT_FOUND -> Log.w(TAG, "Movil no encontrado. Posiblemente fuera de rango o app cerrada.")
+                    else -> Log.w(TAG, "No se pudo resolver capability movil: ${e.message}")
+                }
             }.getOrDefault(emptyList())
 
-            if (capabilityNodes.isEmpty()) {
+            val targetNodes = if (!trustedNodeId.isNullOrBlank()) {
+                val matched = allReachableMobileNodes.filter { it.id == trustedNodeId }
+                if (matched.isNotEmpty()) matched else allReachableMobileNodes
+            } else {
+                allReachableMobileNodes
+            }
+
+            if (targetNodes.isEmpty()) {
                 Log.w(TAG, "No reachable BioGuard mobile capability for $path")
                 return false
             }
-            for (node in capabilityNodes) {
-                messageClient.sendMessage(node.id, path, payloadJson.toByteArray(Charsets.UTF_8)).await()
+            for (node in targetNodes) {
+                if (trustedNodeId.isNullOrBlank()) {
+                    preferences.saveTrustedMobileNodeId(node.id)
+                }
+                messageClient.sendMessage(node.id, path, payloadJson.toByteArray(Charsets.UTF_8))
+                    .addOnSuccessListener {
+                        Log.d(TAG, "Mensaje enviado OK a $path -> node ${node.displayName}")
+                    }
+                    .addOnFailureListener { e ->
+                        val statusCode = (e as? ApiException)?.statusCode
+                        when (statusCode) {
+                            STATUS_API_NOT_CONNECTED -> Log.e(TAG, "API no conectada al enviar a $path")
+                            STATUS_TARGET_NODE_NOT_FOUND -> Log.w(TAG, "Nodo destino desconectado: ${node.displayName}")
+                            else -> Log.e(TAG, "Error enviando a $path: ${e.message}")
+                        }
+                    }
+                    .await()
             }
-            Log.d(TAG, "Mensaje enviado exitosamente a $path")
             true
+        } catch (e: ApiException) {
+            when (e.statusCode) {
+                STATUS_API_NOT_CONNECTED -> Log.e(TAG, "Wearable Data Layer API no conectada: ${e.message}")
+                STATUS_TARGET_NODE_NOT_FOUND -> Log.w(TAG, "Nodo movil no alcanzable: ${e.message}")
+                else -> Log.e(TAG, "ApiException enviando a $path [status=${e.statusCode}]: ${e.message}")
+            }
+            false
         } catch (e: Exception) {
             Log.e(TAG, "Error enviando mensaje a $path: ${e.message}", e)
             false
@@ -206,6 +221,7 @@ class SyncRepositoryImpl @Inject constructor(
     }
 
     override suspend fun syncPendingReadings(): Result<Int> {
+        priorityQueue.drain(::sendMessageToPhoneInternal)
         val unsynced = readingRepository.getUnsyncedReadings()
         if (unsynced.isEmpty()) {
             Log.d(TAG, "No hay lecturas pendientes de sincronización")
@@ -219,6 +235,8 @@ class SyncRepositoryImpl @Inject constructor(
                 pulsoBpm = reading.bpm.toDouble(),
                 temperaturaC = reading.temperature.toDouble(),
                 sudoracionGsr = reading.gsr.toDouble(),
+                hrv = reading.hrvRmssd.toDouble().takeIf { it > 0.0 },
+                pasos = reading.steps,
                 timestamp = Instant.ofEpochMilli(reading.timestamp).toString()
             )
             val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), req)
@@ -297,6 +315,15 @@ class SyncRepositoryImpl @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Excepción en enviarAlerta [${e::class.simpleName}]: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun sendDismissCommandToPhone(): Result<Unit> {
+        return try {
+            val sent = sendMessageToPhoneInternal("/commands/dismiss", "{}")
+            if (sent) Result.success(Unit) else Result.failure(Exception("No reachable mobile phone"))
+        } catch (e: Exception) {
             Result.failure(e)
         }
     }

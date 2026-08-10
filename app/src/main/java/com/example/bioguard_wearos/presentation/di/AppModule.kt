@@ -6,6 +6,7 @@ import com.example.bioguard_wearos.data.local.BioGuardPreferences
 import com.example.bioguard_wearos.data.local.BiometricReadingRepositoryImpl
 import com.example.bioguard_wearos.data.local.db.BiometricReadingDao
 import com.example.bioguard_wearos.data.local.db.BioGuardDatabase
+import com.example.bioguard_wearos.data.local.db.OutboundMessageDao
 import com.example.bioguard_wearos.data.repository.SensorDataRepositoryImpl
 import com.example.bioguard_wearos.data.repository.SyncRepositoryImpl
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
@@ -38,6 +39,11 @@ object AppModule {
     ): BiometricReadingDao {
         return database.biometricReadingDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideOutboundMessageDao(database: BioGuardDatabase): OutboundMessageDao =
+        database.outboundMessageDao()
 
     @Provides
     @Singleton

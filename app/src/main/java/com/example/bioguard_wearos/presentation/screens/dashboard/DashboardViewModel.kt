@@ -12,6 +12,7 @@ import com.example.bioguard_wearos.domain.risk.BiometricInput
 import com.example.bioguard_wearos.domain.risk.RiskAssessment
 import com.example.bioguard_wearos.domain.risk.RiskLevel
 import com.example.bioguard_wearos.domain.risk.TriggerSource
+import com.example.bioguard_wearos.util.WearablePairingQr
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,8 +24,11 @@ import javax.inject.Inject
 
 data class DashboardUiState(
     val sensorData: SensorData = SensorData(),
+    val isPhonePaired: Boolean = false,
     val isPhoneConnected: Boolean = false,
     val sensorStatusMessage: String? = null,
+    val panicStatusMessage: String? = null,
+    val isSendingPanic: Boolean = false,
     val isFirstRun: Boolean = true,
     val showDetailDialog: Boolean = false,
     val dialogTitle: String = "",
@@ -75,9 +79,31 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(isPhoneConnected = connected) }
     }
 
+    fun setPhoneConnectionStatus(paired: Boolean, connected: Boolean) {
+        _uiState.update { it.copy(isPhonePaired = paired, isPhoneConnected = connected) }
+    }
+
+    suspend fun getInstallId(): String = preferences.getOrCreateInstallId()
+
+    suspend fun getTrustedMobileNodeId(): String? = preferences.getTrustedMobileNodeId()
+
+    suspend fun createPairingPayload(deviceName: String, deviceId: String, nodeId: String): String {
+        val issuedAt = System.currentTimeMillis() / 1000L
+        val nonce = WearablePairingQr.newNonce()
+        preferences.savePairingChallenge(nonce, issuedAt)
+        return WearablePairingQr.buildPayload(deviceName, deviceId, nodeId, issuedAt, nonce)
+    }
+
     fun triggerPanicButton() {
+        if (_uiState.value.isSendingPanic) return
         val current = uiState.value.sensorData
         Log.w(TAG, "BOTON DE PANICO ACTIVADO MANUALMENTE POR EL USUARIO")
+        _uiState.update {
+            it.copy(
+                isSendingPanic = true,
+                panicStatusMessage = "Alerta de panico activada"
+            )
+        }
         viewModelScope.launch {
             try {
                 val assessment = RiskAssessment(
@@ -87,7 +113,7 @@ class DashboardViewModel @Inject constructor(
                     input = BiometricInput(bpm = current.bpm, temperature = current.temperature, gsr = current.gsr, bmi = 25f)
                 )
                 alertManager.triggerAlert(assessment)
-                syncRepository.enviarAlerta(
+                val result = syncRepository.enviarAlerta(
                     tipoAlerta = "PANIC_BUTTON",
                     mensaje = "Alerta manual activada desde el reloj",
                     nivelRiesgo = "CRITICAL_HIGH",
@@ -95,8 +121,24 @@ class DashboardViewModel @Inject constructor(
                     temperatura = current.temperature,
                     gsr = current.gsr
                 )
+                _uiState.update {
+                    it.copy(
+                        isSendingPanic = false,
+                        panicStatusMessage = if (result.isSuccess) {
+                            "SOS guardado y en envio prioritario"
+                        } else {
+                            "SOS local activo; se enviara al reconectar"
+                        }
+                    )
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error disparando botón de pánico: ${e.message}", e)
+                _uiState.update {
+                    it.copy(
+                        isSendingPanic = false,
+                        panicStatusMessage = "SOS local activo; revisa conexion con el movil"
+                    )
+                }
             }
         }
     }

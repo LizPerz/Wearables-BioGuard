@@ -12,6 +12,10 @@ data class BiometricReadingEntity(
     val bpm: Float,
     val temperature: Float,
     val gsr: Float,
+    val hrvRmssd: Float = 0f,
+    val hrvSdnn: Float = 0f,
+    val stressEstimate: Float = 0f,
+    val steps: Int? = null,
     val bmi: Float,
     val riskLevel: RiskLevel,
     val synced: Boolean = false

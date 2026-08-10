@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -40,6 +42,10 @@ class BioGuardPreferences @Inject constructor(
     private val isFirstRunKey = booleanPreferencesKey("is_first_run")
     private val dispositivoIdKey = stringPreferencesKey("dispositivo_id")
     private val pacienteIdKey = stringPreferencesKey("paciente_id")
+    private val installIdKey = stringPreferencesKey("install_id")
+    private val trustedMobileNodeIdKey = stringPreferencesKey("trusted_mobile_node_id")
+    private val pairingNonceKey = stringPreferencesKey("pairing_nonce")
+    private val pairingIssuedAtKey = longPreferencesKey("pairing_issued_at")
 
     private val riskCriticalBpmHighKey = floatPreferencesKey("risk_critical_bpm_high")
     private val riskCriticalBpmLowKey = floatPreferencesKey("risk_critical_bpm_low")
@@ -67,6 +73,7 @@ class BioGuardPreferences @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences.remove(dispositivoIdKey)
             preferences.remove(pacienteIdKey)
+            preferences.remove(trustedMobileNodeIdKey)
         }
     }
 
@@ -83,6 +90,55 @@ class BioGuardPreferences @Inject constructor(
 
     suspend fun getPacienteId(): String? {
         return context.dataStore.data.first()[pacienteIdKey]?.let { decrypt(it) }
+    }
+
+    suspend fun getOrCreateInstallId(): String {
+        var installId = ""
+        context.dataStore.edit { preferences ->
+            installId = preferences[installIdKey] ?: UUID.randomUUID().toString().also {
+                preferences[installIdKey] = it
+            }
+        }
+        return installId
+    }
+
+    suspend fun saveTrustedMobileNodeId(nodeId: String) {
+        require(nodeId.isNotBlank()) { "Trusted mobile node ID cannot be blank" }
+        context.dataStore.edit { it[trustedMobileNodeIdKey] = encrypt(nodeId) }
+    }
+
+    suspend fun getTrustedMobileNodeId(): String? =
+        context.dataStore.data.first()[trustedMobileNodeIdKey]?.let { decrypt(it) }
+
+    suspend fun savePairingChallenge(nonce: String, issuedAtSeconds: Long) {
+        require(nonce.length >= 16) { "Pairing nonce is too short" }
+        context.dataStore.edit { preferences ->
+            preferences[pairingNonceKey] = encrypt(nonce)
+            preferences[pairingIssuedAtKey] = issuedAtSeconds
+        }
+    }
+
+    suspend fun consumePairingChallenge(
+        nonce: String,
+        nowSeconds: Long = System.currentTimeMillis() / 1000L
+    ): Boolean {
+        var accepted = false
+        context.dataStore.edit { preferences ->
+            val encryptedStored = preferences[pairingNonceKey]
+            val expected = encryptedStored?.let { decrypt(it) }
+            val issuedAt = preferences[pairingIssuedAtKey] ?: 0L
+            accepted = !expected.isNullOrBlank() &&
+                issuedAt in (nowSeconds - PAIRING_MAX_AGE_SECONDS)..(nowSeconds + 30L) &&
+                MessageDigest.isEqual(
+                    expected.toByteArray(Charsets.UTF_8),
+                    nonce.toByteArray(Charsets.UTF_8)
+                )
+            if (accepted || issuedAt < nowSeconds - PAIRING_MAX_AGE_SECONDS) {
+                preferences.remove(pairingNonceKey)
+                preferences.remove(pairingIssuedAtKey)
+            }
+        }
+        return accepted
     }
 
     val riskThresholds: Flow<RiskThresholds> = context.dataStore.data.map { prefs ->
@@ -145,5 +201,9 @@ class BioGuardPreferences @Inject constructor(
         } catch (e: Exception) {
             null
         }
+    }
+
+    private companion object {
+        const val PAIRING_MAX_AGE_SECONDS = 300L
     }
 }

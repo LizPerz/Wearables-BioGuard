@@ -1,12 +1,15 @@
 package com.example.bioguard_wearos.presentation.screens.alert
 
+import android.content.Context
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bioguard_wearos.domain.repository.SyncRepository
 import com.example.bioguard_wearos.domain.risk.AlertManager
 import com.example.bioguard_wearos.domain.risk.AlertState
 import com.example.bioguard_wearos.domain.risk.RiskLevel
+import com.example.bioguard_wearos.presentation.WearableAlertNotifier
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,6 +30,8 @@ data class CriticalAlertUiState(
     val probability: Float = 0f,
     val eventSent: Boolean = false,
     val alertSent: Boolean = false,
+    val helpRequested: Boolean = false,
+    val helpSent: Boolean = false,
     val error: String? = null
 )
 
@@ -97,14 +102,31 @@ class CriticalAlertViewModel @Inject constructor(
         countdownJob?.cancel()
         alertManager.dismissAlert()
         _uiState.update { it.copy(isCountdownActive = false) }
+        viewModelScope.launch {
+            try {
+                syncRepository.sendDismissCommandToPhone()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error notificando descarte al movil: ${e.message}")
+            }
+        }
     }
 
-    fun requestHelp() {
+    fun acknowledgeAlert(context: Context) {
+        dismissAlert()
+        val notifManager = NotificationManagerCompat.from(context)
+        notifManager.cancel(WearableAlertNotifier.NOTIFICATION_CRITICAL)
+    }
+
+    fun requestHelp(context: Context) {
         Log.w(TAG, "USUARIO SOLICITÓ AYUDA DE EMERGENCIA")
         countdownJob?.cancel()
         alertManager.requestHelp()
-        _uiState.update { it.copy(isCountdownActive = false) }
-        sendEventoUrgente()
+        _uiState.update { it.copy(isCountdownActive = false, helpRequested = true) }
+
+        val notifier = WearableAlertNotifier(context)
+        notifier.showHelpRequestedNotification()
+
+        sendEventoUrgenteWithFeedback(context)
     }
 
     private fun sendEvento() {
@@ -148,6 +170,41 @@ class CriticalAlertViewModel @Inject constructor(
         }
     }
 
+    private fun sendEventoUrgenteWithFeedback(context: Context) {
+        val state = _uiState.value
+        viewModelScope.launch {
+            val eventResult = syncRepository.enviarEvento(
+                bpm = state.bpm,
+                temperatura = state.temperature,
+                gsr = state.gsr,
+                nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
+                tipoEvento = "EMERGENCY_PROTOCOL",
+                descripcion = "Protocolo de emergencia activado. Usuario solicitó ayuda manualmente."
+            )
+            val alertResult = syncRepository.enviarAlerta(
+                tipoAlerta = "EMERGENCY assistance",
+                mensaje = "Protocolo de auxilio a red familiar activado manualmente por el usuario",
+                nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
+                bpm = state.bpm,
+                temperatura = state.temperature,
+                gsr = state.gsr
+            )
+
+            val helpSent = eventResult.isSuccess || alertResult.isSuccess
+            _uiState.update {
+                it.copy(
+                    helpSent = helpSent,
+                    error = if (!helpSent) "Ayuda encolada. Se enviará al reconectar con el móvil." else null
+                )
+            }
+            if (helpSent) {
+                Log.d(TAG, "Solicitud de ayuda enviada correctamente")
+            } else {
+                Log.w(TAG, "Móvil no conectado. Ayuda encolada para envío diferido.")
+            }
+        }
+    }
+
     private fun sendEventoUrgente() {
         val state = _uiState.value
         viewModelScope.launch {
@@ -157,11 +214,11 @@ class CriticalAlertViewModel @Inject constructor(
                 gsr = state.gsr,
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 tipoEvento = "EMERGENCY_PROTOCOL",
-                descripcion = "Protocolo de emergencia activado. Timer expirado o usuario solicitó ayuda."
+                descripcion = "Protocolo de emergencia activado. Timer expirado."
             )
             syncRepository.enviarAlerta(
                 tipoAlerta = "EMERGENCY assistance",
-                mensaje = "Protocolo de auxilio a red familiar activado",
+                mensaje = "Protocolo de auxilio a red familiar activado por temporizador",
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 bpm = state.bpm,
                 temperatura = state.temperature,

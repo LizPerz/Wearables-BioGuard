@@ -30,11 +30,13 @@ import com.example.bioguard_wearos.domain.risk.RiskAssessment
 import com.example.bioguard_wearos.domain.risk.RiskThresholdController
 import com.example.bioguard_wearos.domain.risk.RiskThresholds
 import com.example.bioguard_wearos.domain.risk.TriggerSource
+import com.example.bioguard_wearos.domain.security.WearableCommandValidator
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
 import org.json.JSONObject
 import com.example.bioguard_wearos.presentation.MainActivity
+import com.example.bioguard_wearos.presentation.WearableAlertNotifier
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +72,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         private const val BATTERY_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private val BATTERY_THRESHOLDS = intArrayOf(30, 15, 5)
         private const val DEFAULT_BMI = 25f
+        private const val PAIR_PATH = "/bioguard/pair"
     }
 
     inner class LocalBinder : Binder() {
@@ -114,6 +117,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private var criticalEpisodeActive = false
     private var lastRiskAssessment: RiskAssessment? = null
     private var lastLiveTelemetryTimestamp = 0L
+    private lateinit var notifier: WearableAlertNotifier
 
     override fun onBind(intent: Intent?): IBinder = binder
 
@@ -122,6 +126,8 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         Log.d(TAG, "Servicio creado")
 
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
+        notifier = WearableAlertNotifier(this)
+        notifier.createChannels()
 
         createNotificationChannel()
         createAlertNotificationChannel()
@@ -150,10 +156,14 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
 
         val hasHeartRate = hasHealthHeartRatePermission()
 
-        if (!hasBodySensors || !hasHeartRate) {
+        if (!hasBodySensors && !hasHeartRate) {
             Log.w(TAG, "Sin permisos requeridos de sensores. BODY_SENSORS=$hasBodySensors, HR=$hasHeartRate")
             stopSelf()
             return START_NOT_STICKY
+        }
+
+        if (!hasBodySensors) {
+            Log.i(TAG, "Permiso BODY_SENSORS no concedido (normal en Samsung), usando READ_HEART_RATE")
         }
 
         try {
@@ -242,14 +252,15 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 if (!criticalEpisodeActive && !alertManager.alertState.value.isActive) {
                     criticalEpisodeActive = true
                     Log.w(TAG, "Riesgo local CRÍTICO detectado (umbrales: ${riskThresholdController.current})")
-                    showCriticalNotification(data)
+                    notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature)
                     alertManager.triggerAlert(assessment)
                 }
             }
             RiskLevel.MODERATE_HIGH -> {
                 if (criticalEpisodeActive && !alertManager.alertState.value.isActive) {
-                    Log.d(TAG, "Riesgo local moderado-alto detectado: ${assessment.level.label}")
+                    Log.d(TAG, "Riesgo local moderado detectado: ${assessment.level.label}")
                 }
+                notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature)
             }
             else -> {
                 if (criticalEpisodeActive && !alertManager.alertState.value.isActive) {
@@ -301,6 +312,10 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         bpm = data.bpm,
                         temperature = data.temperature,
                         gsr = data.gsr,
+                        hrvRmssd = data.rmssd,
+                        hrvSdnn = data.sdnn,
+                        stressEstimate = data.stressEstimate,
+                        steps = data.steps,
                         bmi = cachedBmi,
                         riskLevel = lastRiskAssessment?.level ?: RiskLevel.OPTIMAL
                     )
@@ -513,17 +528,41 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     }
 
     override fun onMessageReceived(event: MessageEvent) {
-        Log.d(TAG, "Mensaje recibido de Wearable Data Layer: path=${event.path}")
+        serviceScope.launch {
+            if (event.path == PAIR_PATH) {
+                // PairingListenerService owns challenge validation and trust persistence.
+                return@launch
+            }
+            if (event.data.size > WearableCommandValidator.MAX_MESSAGE_BYTES ||
+                event.path !in WearableCommandValidator.allowedPaths
+            ) {
+                Log.w(TAG, "Mensaje movil rechazado por envoltura invalida")
+                return@launch
+            }
+            val trustedNodeId = preferences.getTrustedMobileNodeId()
+            if (trustedNodeId.isNullOrBlank() || trustedNodeId != event.sourceNodeId) {
+                Log.w(TAG, "Mensaje rechazado desde un nodo movil no vinculado")
+                return@launch
+            }
+            handleTrustedMessage(event)
+        }
+    }
+
+    private fun handleTrustedMessage(event: MessageEvent) {
+        Log.d(TAG, "Mensaje local autenticado recibido: path=${event.path}")
         when (event.path) {
             "/commands/alert" -> {
                 try {
                     val json = String(event.data, Charsets.UTF_8)
-                    Log.d(TAG, "Comando de alerta recibido: $json")
                     val command = JSONObject(json)
                     val bpm = command.optDouble("bpm", 0.0).toFloat()
                     val temp = command.optDouble("temperatura", 0.0).toFloat()
                     val gsr = command.optDouble("gsr", 0.0).toFloat()
                     val probability = command.optDouble("probability", 0.0).toFloat()
+                    if (!WearableCommandValidator.isValidAlert(bpm, temp, gsr, probability)) {
+                        Log.w(TAG, "Comando de alerta rechazado por valores invalidos")
+                        return
+                    }
 
                     val assessment = RiskAssessment(
                         level = RiskLevel.CRITICAL_HIGH,
@@ -531,7 +570,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         triggerSource = TriggerSource.SIGMOID,
                         input = BiometricInput(bpm = bpm, temperature = temp, gsr = gsr, bmi = cachedBmi)
                     )
-                    showCriticalNotification(SensorData(bpm = bpm, temperature = temp, gsr = gsr))
+                    notifier.notifyRiskLevel(RiskLevel.CRITICAL_HIGH, bpm, temp)
                     alertManager.triggerAlert(assessment)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando comando de alerta del teléfono", e)
@@ -547,6 +586,10 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                     try {
                         val ack = JSONObject(String(event.data, Charsets.UTF_8))
                         val ackPath = ack.optString("ackPath")
+                        if (!WearableCommandValidator.isValidAckPath(ackPath)) {
+                            Log.w(TAG, "ACK rechazado por ruta invalida")
+                            return@launch
+                        }
                         val readingId = ackPath.removePrefix("/bioguard/telemetry/").toLongOrNull()
                         if (readingId != null) {
                             readingRepository.markAsSynced(listOf(readingId))
@@ -564,6 +607,10 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                     val json = String(event.data, Charsets.UTF_8)
                     val command = JSONObject(json)
                     val intervalSeconds = command.optInt("intervalSeconds", 60)
+                    if (intervalSeconds !in 15..3_600) {
+                        Log.w(TAG, "Intervalo de muestreo fuera de rango")
+                        return
+                    }
                     Log.d(TAG, "Comando de intervalo de muestreo recibido del móvil: $intervalSeconds segundos")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando comando de muestreo del móvil", e)
@@ -575,6 +622,10 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                     val command = JSONObject(json)
                     val sensor = command.optString("sensor", "")
                     val enabled = command.optBoolean("enabled", true)
+                    if (sensor !in setOf("heart_rate", "temperature", "steps")) {
+                        Log.w(TAG, "Comando de sensor no soportado")
+                        return
+                    }
                     Log.d(TAG, "Comando de conmutación de sensor recibido del móvil: sensor=$sensor, enabled=$enabled")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando comando de conmutación de sensor del móvil", e)
@@ -583,7 +634,6 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             "/risk-thresholds" -> {
                 try {
                     val json = String(event.data, Charsets.UTF_8)
-                    Log.d(TAG, "Umbrales de riesgo recibidos del teléfono: $json")
                     val command = JSONObject(json)
                     val thresholds = RiskThresholds(
                         criticalBpmHigh = command.optDouble("criticalBpmHigh", RiskThresholds.DEFAULT.criticalBpmHigh.toDouble()).toFloat(),
@@ -593,6 +643,10 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         moderateTemp = command.optDouble("moderateTemp", RiskThresholds.DEFAULT.moderateTemp.toDouble()).toFloat(),
                         moderateGsr = command.optDouble("moderateGsr", RiskThresholds.DEFAULT.moderateGsr.toDouble()).toFloat()
                     )
+                    if (!WearableCommandValidator.isValidThresholds(thresholds)) {
+                        Log.w(TAG, "Umbrales de riesgo rechazados por valores invalidos")
+                        return
+                    }
                     riskThresholdController.update(thresholds)
                     serviceScope.launch {
                         try {

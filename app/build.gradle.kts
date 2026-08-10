@@ -17,6 +17,20 @@ val keystoreProperties = Properties().apply {
     System.getenv("BIOGUARD_WEAR_STORE_PASSWORD")?.let { setProperty("storePassword", it) }
     System.getenv("BIOGUARD_WEAR_KEY_ALIAS")?.let { setProperty("keyAlias", it) }
     System.getenv("BIOGUARD_WEAR_KEY_PASSWORD")?.let { setProperty("keyPassword", it) }
+    System.getenv("BIOGUARD_STORE_FILE")?.let { setProperty("storeFile", it) }
+    System.getenv("BIOGUARD_STORE_PASSWORD")?.let { setProperty("storePassword", it) }
+    System.getenv("BIOGUARD_KEY_ALIAS")?.let { setProperty("keyAlias", it) }
+    System.getenv("BIOGUARD_KEY_PASSWORD")?.let { setProperty("keyPassword", it) }
+}
+
+val releaseRequested = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+val releaseVersionCode = System.getenv("BIOGUARD_VERSION_CODE")?.toIntOrNull() ?: 1
+val releaseVersionName = System.getenv("BIOGUARD_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.0"
+if (releaseRequested) {
+    val requiredSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    check(requiredSigningKeys.all { !keystoreProperties.getProperty(it).isNullOrBlank() }) {
+        "Release builds require the shared BioGuard signing keystore configuration"
+    }
 }
 
 android {
@@ -33,13 +47,8 @@ android {
         applicationId = "com.bioguard.movil"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
-        buildConfigField(
-            "String",
-            "BIOGUARD_PAIRING_SECRET",
-            "\"${System.getenv("BIOGUARD_PAIRING_SECRET") ?: "dev-only-change-me-bioguard-pairing-secret-32"}\""
-        )
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
     }
 
     signingConfigs {
@@ -55,14 +64,8 @@ android {
 
     buildTypes {
         release {
-            val pairingSecret = System.getenv("BIOGUARD_PAIRING_SECRET")
-                ?: if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
-                    throw GradleException("BIOGUARD_PAIRING_SECRET is required for release builds")
-                } else {
-                    "release-secret-not-configured"
-                }
-            buildConfigField("String", "BIOGUARD_PAIRING_SECRET", "\"$pairingSecret\"")
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -79,6 +82,10 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -114,6 +121,8 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    implementation(libs.sqlcipher.android)
+    implementation(libs.androidx.sqlite)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

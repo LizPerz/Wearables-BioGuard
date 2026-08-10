@@ -25,6 +25,9 @@ class BioGuardPassiveListenerService : PassiveListenerService() {
 
     override fun onNewDataPointsReceived(dataPoints: DataPointContainer) {
         // Ejecutar procesamiento rápido en un micro WakeLock para liberar CPU
+        // NOTA: Se lee frecuencia cardíaca (HEART_RATE_BPM) de forma pasiva.
+        // GSR/Sudoración NO se lee aquí ya que es un valor estimado en la
+        // mayoría de smartwatches Wear OS (derivado de HR + temperatura).
         dutyCycleManager.runWithMicroWakeLock {
             val heartRateData = dataPoints.getData(DataType.HEART_RATE_BPM)
             for (dataPoint in heartRateData) {

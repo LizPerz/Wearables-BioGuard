@@ -48,6 +48,10 @@ class TelemetrySaveScheduler(
             bpm = data.bpm,
             temperature = data.temperature,
             gsr = data.gsr,
+            hrvRmssd = data.rmssd,
+            hrvSdnn = data.sdnn,
+            stressEstimate = data.stressEstimate,
+            steps = data.steps,
             bmi = DEFAULT_BMI,
             riskLevel = assessment.level
         )
