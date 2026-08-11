@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
         Log.d("BIOGUARD", "Permiso BODY_SENSORS: $bodySensorsGranted")
         Log.d("BIOGUARD", "Permiso READ_HEART_RATE: $healthHeartRate")
 
-        if (bodySensorsGranted && healthHeartRate) {
+        if (bodySensorsGranted || healthHeartRate) {
             sensorsEnabled = true
             Log.d("BIOGUARD", "Permisos concedidos (BODY_SENSORS=$bodySensorsGranted, HR=$healthHeartRate). Iniciando motor...")
             startSensorService()
@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
         val bodySensors = ContextCompat.checkSelfPermission(
             this, Manifest.permission.BODY_SENSORS
         ) == PackageManager.PERMISSION_GRANTED
-        return bodySensors && hasHealthHeartRatePermission()
+        return bodySensors || hasHealthHeartRatePermission()
     }
 
     private fun hasHealthHeartRatePermission(): Boolean {

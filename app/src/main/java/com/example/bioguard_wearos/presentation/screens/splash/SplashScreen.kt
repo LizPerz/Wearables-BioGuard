@@ -96,7 +96,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         val screenDp = minOf(maxWidth, maxHeight)
-        val logoSize = 200.dp
+        val logoSize = 220.dp
         val progressRingSize = 252.dp
         val strokeDp = screenDp * 0.012f
 

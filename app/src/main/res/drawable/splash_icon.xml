@@ -2,20 +2,20 @@
 
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:width="48dp"
-        android:height="48dp"
+        android:width="120dp"
+        android:height="120dp"
         android:gravity="center">
         <shape android:shape="oval">
             <solid android:color="#FFFFFF" />
         </shape>
     </item>
     <item
-        android:width="40dp"
-        android:height="40dp"
+        android:width="100dp"
+        android:height="100dp"
         android:gravity="center">
         <vector
-            android:width="24dp"
-            android:height="24dp"
+            android:width="56dp"
+            android:height="56dp"
             android:tint="#000000"
             android:viewportWidth="24"
             android:viewportHeight="24">
