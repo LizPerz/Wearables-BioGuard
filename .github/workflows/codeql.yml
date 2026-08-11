@@ -37,7 +37,13 @@ jobs:
       - uses: github/codeql-action/init@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3.37.6
         with:
           languages: ${{ matrix.language }}
-          build-mode: autobuild
+          build-mode: manual
+          queries: security-extended
+
+      # DevSecOps: compilar explícitamente para que el extractor de CodeQL
+      # capture todo el bytecode Kotlin/Java (autobuild suele fallar en Android).
+      - name: Compilar para extracción CodeQL
+        run: ./gradlew :app:assembleDebug
 
       - uses: github/codeql-action/analyze@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3.37.6
         with:

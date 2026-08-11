@@ -89,6 +89,13 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // DevSecOps/testing: permite que los unit tests JVM devuelvan valores por
+    // defecto para stubs de Android (p.ej. android.util.Log) en lugar de lanzar.
+    // No afecta al runtime de la app: solo a testDebugUnitTest/testReleaseUnitTest.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 // DevSecOps: exportar el schema de Room a version control para auditar y
