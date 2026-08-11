@@ -64,7 +64,7 @@ fun SensorCheckScreen(onComplete: () -> Unit) {
             Image(
                 painter = painterResource(id = R.drawable.bioguard),
                 contentDescription = "BioGuard Logo",
-                modifier = Modifier.size(60.dp)
+                modifier = Modifier.size(80.dp)
             )
             Spacer(modifier = Modifier.height(6.dp))
             DottedProgressIndicator(

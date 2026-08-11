@@ -198,7 +198,7 @@ fun DashboardScreen(
                 Image(
                     painter = painterResource(id = R.drawable.bioguard),
                     contentDescription = "BioGuard Logo",
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(80.dp)
                 )
             }
 

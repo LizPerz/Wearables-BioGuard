@@ -1,0 +1,6 @@
+@echo off
+echo Construyendo...
+call gradlew.bat assembleDebug
+echo Instalando en el reloj...
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+echo Listo!
