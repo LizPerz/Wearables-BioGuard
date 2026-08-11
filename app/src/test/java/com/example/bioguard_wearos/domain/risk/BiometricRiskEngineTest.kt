@@ -74,21 +74,21 @@ class BiometricRiskEngineTest {
     }
 
     @Test
-    fun `matrix NOT moderate when BPM is 94`() {
+    fun `matrix defaults to MODERATE when BPM is 94`() {
         val input = BiometricInput(bpm = 94f, temperature = 37.5f, gsr = 15f, bmi = 25f)
-        assertNotEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
+        assertEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
     }
 
     @Test
-    fun `matrix NOT moderate when temp is exactly 37_2`() {
+    fun `matrix defaults to MODERATE when temp is exactly 37_2`() {
         val input = BiometricInput(bpm = 100f, temperature = 37.2f, gsr = 15f, bmi = 25f)
-        assertNotEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
+        assertEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
     }
 
     @Test
-    fun `matrix NOT moderate when GSR is exactly 20`() {
+    fun `matrix defaults to MODERATE when GSR is exactly 20`() {
         val input = BiometricInput(bpm = 100f, temperature = 37.5f, gsr = 20f, bmi = 25f)
-        assertNotEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
+        assertEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
     }
 
     // ─────────────────────────────────────────────
@@ -292,21 +292,21 @@ class BiometricRiskEngineTest {
     // ─────────────────────────────────────────────
 
     @Test
-    fun `partial match BPM high but temp normal defaults to OPTIMAL`() {
+    fun `partial match BPM high but temp normal defaults to MODERATE`() {
         val input = BiometricInput(bpm = 120f, temperature = 36.5f, gsr = 25f, bmi = 25f)
-        assertEquals(RiskLevel.OPTIMAL, engine.evaluateMatrix(input))
+        assertEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
     }
 
     @Test
-    fun `partial match temp low but BPM normal defaults to OPTIMAL`() {
+    fun `partial match temp low but BPM normal defaults to MODERATE`() {
         val input = BiometricInput(bpm = 70f, temperature = 34f, gsr = 25f, bmi = 25f)
-        assertEquals(RiskLevel.OPTIMAL, engine.evaluateMatrix(input))
+        assertEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
     }
 
     @Test
-    fun `partial match GSR high but BPM normal defaults to OPTIMAL`() {
+    fun `partial match GSR high but BPM normal defaults to MODERATE`() {
         val input = BiometricInput(bpm = 70f, temperature = 36.5f, gsr = 90f, bmi = 25f)
-        assertEquals(RiskLevel.OPTIMAL, engine.evaluateMatrix(input))
+        assertEquals(RiskLevel.MODERATE_HIGH, engine.evaluateMatrix(input))
     }
 
     // ─────────────────────────────────────────────
