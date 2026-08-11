@@ -47,3 +47,11 @@
 # (reglas por defecto de AGP cubren la mayoría; estas son salvaguarda adicional).
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
+
+# DevSecOps: en builds de release se eliminan los logs de VERBOSE y DEBUG para
+# reducir la superficie de fuga de información en logcat (rutas, estados de auth).
+# Se conservan WARN/ERROR (logs de seguridad).
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+}

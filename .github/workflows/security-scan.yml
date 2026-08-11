@@ -15,12 +15,19 @@ jobs:
   secret-scan:
     name: Secret scanning (gitleaks)
     runs-on: ubuntu-latest
+    # DevSecOps: Gitleaks Action necesita escribir alerts de Code Scanning
+    # (security-events) y comentarios en PRs (pull-requests) para reportar.
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      # DevSecOps: acciones pineadas por SHA (inmutable) para endurecer la cadena de suministro.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v3
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

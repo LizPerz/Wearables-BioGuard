@@ -11,7 +11,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 @Database(
     entities = [BiometricReadingEntity::class],
     version = 1,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(RiskLevelConverter::class)
 abstract class BioGuardDatabase : RoomDatabase() {

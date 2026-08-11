@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.kotlinSerialization) apply false
     alias(libs.plugins.dependencycheck)
+    alias(libs.plugins.cyclonedxBom) apply false
 }
 
 // DevSecOps - Software Composition Analysis (SCA).

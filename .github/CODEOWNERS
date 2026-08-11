@@ -1,0 +1,31 @@
+# DevSecOps: revisión obligatoria de cambios en código y configuración de seguridad.
+# Ajustar los handles al equipo real propietario del repositorio.
+
+*                                                          @LizPerz
+
+# Pipelines de CI/CD (cambios aquí afectan la cadena de suministro).
+.github/                                                  @LizPerz
+gradle/wrapper/                                           @LizPerz
+
+# Configuración de build y credenciales de firma.
+app/build.gradle.kts                                      @LizPerz
+build.gradle.kts                                          @LizPerz
+gradle/libs.versions.toml                                 @LizPerz
+gradle/verification-metadata.xml                          @LizPerz
+keystore.properties                                       @LizPerz
+
+# Código de seguridad: red, cifrado, almacenamiento y permisos.
+app/src/main/AndroidManifest.xml                          @LizPerz
+app/src/main/res/xml/network_security_config.xml          @LizPerz
+app/src/main/res/xml/data_extraction_rules.xml            @LizPerz
+app/src/main/java/com/example/bioguard_wearos/data/remote/TlsSecurity.kt      @LizPerz
+app/src/main/java/com/example/bioguard_wearos/data/remote/NetworkModule.kt    @LizPerz
+app/src/main/java/com/example/bioguard_wearos/data/remote/AuthInterceptor.kt  @LizPerz
+app/src/main/java/com/example/bioguard_wearos/data/local/TokenCryptoManager.kt @LizPerz
+app/src/main/java/com/example/bioguard_wearos/data/local/DatabaseKeyManager.kt @LizPerz
+app/src/main/java/com/example/bioguard_wearos/data/local/BioGuardPreferences.kt @LizPerz
+app/src/main/java/com/example/bioguard_wearos/data/local/db/BioGuardDatabase.kt @LizPerz
+
+# Política de seguridad y reglas de hardening.
+SECURITY.md                                                @LizPerz
+app/proguard-rules.pro                                     @LizPerz

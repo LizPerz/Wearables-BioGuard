@@ -30,6 +30,7 @@ workmanager = "2.10.0"
 dependencycheck = "12.2.2"
 sqlcipher = "4.17.0"
 androidxSqlite = "2.6.2"
+cyclonedx = "3.4.0"
 
 [libraries]
 play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
@@ -85,3 +86,4 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 dependencycheck = { id = "org.owasp.dependencycheck", version.ref = "dependencycheck" }
+cyclonedxBom = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }

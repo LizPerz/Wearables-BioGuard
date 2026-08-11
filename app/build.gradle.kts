@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.cyclonedxBom)
 }
 
 import java.io.FileInputStream
@@ -88,6 +89,12 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+// DevSecOps: exportar el schema de Room a version control para auditar y
+// generar migraciones seguras entre versiones de la BD cifrada.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
