@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -46,6 +47,7 @@ class BioGuardPreferences @Inject constructor(
     private val trustedMobileNodeIdKey = stringPreferencesKey("trusted_mobile_node_id")
     private val pairingNonceKey = stringPreferencesKey("pairing_nonce")
     private val pairingIssuedAtKey = longPreferencesKey("pairing_issued_at")
+    private val liveTelemetryIntervalSecondsKey = intPreferencesKey("live_telemetry_interval_seconds")
 
     private val riskCriticalBpmHighKey = floatPreferencesKey("risk_critical_bpm_high")
     private val riskCriticalBpmLowKey = floatPreferencesKey("risk_critical_bpm_low")
@@ -109,6 +111,24 @@ class BioGuardPreferences @Inject constructor(
 
     suspend fun getTrustedMobileNodeId(): String? =
         context.dataStore.data.first()[trustedMobileNodeIdKey]?.let { decrypt(it) }
+
+    suspend fun clearTrustedMobileNodeId() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(trustedMobileNodeIdKey)
+            preferences.remove(pairingNonceKey)
+            preferences.remove(pairingIssuedAtKey)
+        }
+    }
+
+    suspend fun getLiveTelemetryIntervalSeconds(): Int =
+        context.dataStore.data.first()[liveTelemetryIntervalSecondsKey] ?: DEFAULT_LIVE_TELEMETRY_INTERVAL_SECONDS
+
+    suspend fun saveLiveTelemetryIntervalSeconds(intervalSeconds: Int) {
+        require(intervalSeconds in MIN_LIVE_TELEMETRY_INTERVAL_SECONDS..MAX_LIVE_TELEMETRY_INTERVAL_SECONDS) {
+            "Intervalo de telemetria fuera de rango"
+        }
+        context.dataStore.edit { it[liveTelemetryIntervalSecondsKey] = intervalSeconds }
+    }
 
     suspend fun savePairingChallenge(nonce: String, issuedAtSeconds: Long) {
         require(nonce.length >= 16) { "Pairing nonce is too short" }
@@ -205,5 +225,8 @@ class BioGuardPreferences @Inject constructor(
 
     private companion object {
         const val PAIRING_MAX_AGE_SECONDS = 300L
+        const val DEFAULT_LIVE_TELEMETRY_INTERVAL_SECONDS = 30
+        const val MIN_LIVE_TELEMETRY_INTERVAL_SECONDS = 15
+        const val MAX_LIVE_TELEMETRY_INTERVAL_SECONDS = 3_600
     }
 }

@@ -67,7 +67,8 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         private const val GSR_SIGNIFICANT_CHANGE = 3f
         private const val RISK_EVAL_INTERVAL_MS = 3000L
         private const val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L
-        private const val LIVE_TELEMETRY_INTERVAL_MS = 30_000L
+        private const val LIVE_TELEMETRY_INTERVAL_DEFAULT_MS = 30_000L
+        private const val LIVE_TELEMETRY_MIN_MS = 15_000L
         private const val FLUSH_INTERVAL_MS = 60_000L
         private const val BATTERY_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private val BATTERY_THRESHOLDS = intArrayOf(30, 15, 5)
@@ -117,6 +118,8 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private var criticalEpisodeActive = false
     private var lastRiskAssessment: RiskAssessment? = null
     private var lastLiveTelemetryTimestamp = 0L
+    @Volatile
+    private var liveTelemetryIntervalMs = LIVE_TELEMETRY_INTERVAL_DEFAULT_MS
     private lateinit var notifier: WearableAlertNotifier
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -134,6 +137,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         acquireWakeLock()
         loadPatientBmi()
         loadRiskThresholds()
+        loadLiveTelemetryInterval()
         observeSensorData()
         startRiskEvaluationLoop()
         startBatteryMonitor()
@@ -232,6 +236,28 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         }
     }
 
+    private fun loadLiveTelemetryInterval() {
+        serviceScope.launch {
+            try {
+                val intervalSeconds = preferences.getLiveTelemetryIntervalSeconds()
+                liveTelemetryIntervalMs = (intervalSeconds * 1000L).coerceAtLeast(LIVE_TELEMETRY_MIN_MS)
+                Log.d(TAG, "Intervalo de telemetria en vivo: $intervalSeconds s")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error cargando intervalo de telemetria: ${e.message}")
+            }
+        }
+    }
+
+    private fun applyLiveTelemetryInterval(intervalSeconds: Int) {
+        val clamped = intervalSeconds.coerceIn(15, 3_600)
+        liveTelemetryIntervalMs = clamped * 1000L
+        serviceScope.launch {
+            runCatching { preferences.saveLiveTelemetryIntervalSeconds(clamped) }
+                .onFailure { Log.w(TAG, "No se pudo persistir intervalo de telemetria: ${it.message}") }
+        }
+        Log.d(TAG, "Intervalo de muestreo aplicado: $clamped s")
+    }
+
     private fun startRiskEvaluationLoop() {
         serviceScope.launch {
             while (true) {
@@ -298,15 +324,13 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private fun sendLiveTelemetryIfDue(data: SensorData) {
         if (data.bpm <= 0f) return
         val now = System.currentTimeMillis()
-        if (now - lastLiveTelemetryTimestamp < LIVE_TELEMETRY_INTERVAL_MS) return
+        if (now - lastLiveTelemetryTimestamp < liveTelemetryIntervalMs) return
         lastLiveTelemetryTimestamp = now
-        val validTemp = if (data.temperature > 0f) data.temperature else (36.5f + (kotlin.math.sin(now / 60000.0) * 0.2f).toFloat())
-        val validGsr = if (data.gsr > 0f) data.gsr else (45f + (kotlin.math.cos(now / 45000.0) * 3f).toFloat())
         serviceScope.launch {
             syncRepository.enviarLecturaLive(
                 bpm = data.bpm,
-                temperatura = validTemp,
-                gsr = validGsr,
+                temperatura = data.temperature,
+                gsr = data.gsr,
                 hrv = data.rmssd,
                 steps = data.steps,
                 spo2 = data.spo2,
@@ -662,7 +686,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         Log.w(TAG, "Intervalo de muestreo fuera de rango")
                         return
                     }
-                    Log.d(TAG, "Comando de intervalo de muestreo recibido del móvil: $intervalSeconds segundos")
+                    applyLiveTelemetryInterval(intervalSeconds)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando comando de muestreo del móvil", e)
                 }

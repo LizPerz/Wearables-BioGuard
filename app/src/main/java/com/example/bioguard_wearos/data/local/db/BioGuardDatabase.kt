@@ -33,7 +33,8 @@ abstract class BioGuardDatabase : RoomDatabase() {
                     "CREATE TABLE IF NOT EXISTS `outbound_messages` (" +
                         "`id` TEXT NOT NULL, `path` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, " +
                         "`priority` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, " +
-                        "`attempts` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                        "`attempts` INTEGER NOT NULL, " +
+                        "`source_message_id` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))"
                 )
             }
         }
@@ -44,6 +45,19 @@ abstract class BioGuardDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `biometric_readings` ADD COLUMN `hrvSdnn` REAL NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `biometric_readings` ADD COLUMN `stressEstimate` REAL NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `biometric_readings` ADD COLUMN `steps` INTEGER")
+                val hasSourceMessageId = db.query("PRAGMA table_info(outbound_messages)").use { cursor ->
+                    var found = false
+                    while (cursor.moveToNext()) {
+                        if (cursor.getString(1) == "source_message_id") {
+                            found = true
+                            break
+                        }
+                    }
+                    found
+                }
+                if (!hasSourceMessageId) {
+                    db.execSQL("ALTER TABLE `outbound_messages` ADD COLUMN `source_message_id` TEXT NOT NULL DEFAULT ''")
+                }
             }
         }
 

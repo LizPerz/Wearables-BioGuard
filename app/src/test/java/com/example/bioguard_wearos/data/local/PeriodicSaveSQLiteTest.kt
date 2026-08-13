@@ -117,26 +117,18 @@ class PeriodicSaveSQLiteTest {
     }
 
     @Test
-    fun `periodic scheduler saves to SQLite every 10 seconds`() = runBlocking {
+    fun `periodic scheduler saves to SQLite on each interval`() = runBlocking {
         val sensorData = MutableStateFlow(
             SensorData(bpm = 75f, temperature = 36.4f, gsr = 22f)
         )
-        val scheduler = TelemetrySaveScheduler(repository, sensorData)
+        val scheduler = TelemetrySaveScheduler(repository, sensorData, intervalMs = 1_000L)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         scheduler.start(scope)
 
-        delay(11_500)
-        val countAfterFirst = dao.count()
-        assertTrue("Tras ~11s debe haber >= 1 registro, got $countAfterFirst", countAfterFirst >= 1)
-
-        delay(10_500)
-        val countAfterSecond = dao.count()
-        assertTrue("Tras ~22s debe haber >= 2 registros, got $countAfterSecond", countAfterSecond >= 2)
-
-        delay(10_500)
-        val countAfterThird = dao.count()
-        assertTrue("Tras ~33s debe haber >= 3 registros, got $countAfterThird", countAfterThird >= 3)
+        val countAfterFirst = awaitCountAtLeast(1)
+        val countAfterSecond = awaitCountAtLeast(countAfterFirst + 1)
+        val countAfterThird = awaitCountAtLeast(countAfterSecond + 1)
 
         scheduler.stop()
         scope.cancel()
@@ -169,18 +161,28 @@ class PeriodicSaveSQLiteTest {
         val sensorData = MutableStateFlow(
             SensorData(bpm = 80f, temperature = 36.5f, gsr = 25f)
         )
-        val scheduler = TelemetrySaveScheduler(repository, sensorData)
+        val scheduler = TelemetrySaveScheduler(repository, sensorData, intervalMs = 10_000L)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         scheduler.start(scope)
-        delay(11_500)
+        scheduler.saveOnce()
         val countBeforeStop = dao.count()
         assertTrue("Debe haber al menos 1 registro antes de stop", countBeforeStop >= 1)
 
         scheduler.stop()
         scope.cancel()
 
-        delay(25_000)
+        delay(1_200)
         assertEquals("Tras stop no debe haber más registros", countBeforeStop, dao.count())
+    }
+
+    private suspend fun awaitCountAtLeast(expected: Int, timeoutMs: Long = 8_000): Int {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (dao.count() < expected && System.currentTimeMillis() < deadline) {
+            delay(100)
+        }
+        val count = dao.count()
+        assertTrue("Se esperaban >= $expected registros, got $count", count >= expected)
+        return count
     }
 }

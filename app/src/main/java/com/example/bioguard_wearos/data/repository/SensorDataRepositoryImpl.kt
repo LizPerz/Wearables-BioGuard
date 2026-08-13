@@ -222,46 +222,23 @@ class SensorDataRepositoryImpl(
             val stressUs = stressMapper.mapToStressUs(rmssd)
             val label = stressMapper.getStressLabel(stressUs)
 
-            val now = System.currentTimeMillis()
-            val currentTemp = if (_sensorData.value.temperature > 0f) {
-                _sensorData.value.temperature
-            } else {
-                36.5f + (kotlin.math.sin(now / 60000.0) * 0.2f).toFloat()
-            }
-
-            val currentGsr = if (_sensorData.value.gsr > 0f) {
-                _sensorData.value.gsr
-            } else {
-                stressUs.takeIf { it > 0f } ?: (45f + (kotlin.math.cos(now / 45000.0) * 3f).toFloat())
-            }
-
             val riskAssessment = RiskAssessment.fromBiometrics(
                 bpm = bpm,
-                temp = currentTemp,
-                gsr = currentGsr,
+                temp = _sensorData.value.temperature,
+                gsr = _sensorData.value.gsr,
                 thresholds = riskThresholdController.current
             )
             if (riskAssessment.level.isElevated) {
                 Log.w("BIOGUARD_RISK", "Evaluación de riesgo local elevada: ${riskAssessment.level.label} (Prob=${riskAssessment.probability})")
             }
 
-            val calculatedGlucose = (95.0f +
-                    (bpm - 72.0f) * 0.45f +
-                    (currentTemp - 36.6f) * 12.0f +
-                    kotlin.math.max(0.0f, currentGsr - 45.0f) * 0.5f +
-                    kotlin.math.max(0.0f, 45.0f - rmssd) * 0.4f
-            ).coerceIn(70.0f, 220.0f)
-
             synchronized(dataLock) {
                 _sensorData.value = _sensorData.value.copy(
                     bpm = bpm,
-                    temperature = currentTemp,
-                    gsr = currentGsr,
                     rmssd = rmssd,
                     sdnn = sdnn,
                     stressEstimate = stressUs,
-                    stressLabel = label,
-                    estimatedGlucoseMgDl = calculatedGlucose
+                    stressLabel = label
                 )
             }
         } catch (e: Exception) {
@@ -277,23 +254,7 @@ class SensorDataRepositoryImpl(
             while (isActive) {
                 try {
                     val currentBpm = _sensorData.value.bpm
-                    if (currentBpm <= 0f && !hasRealBpmData) {
-                        val simBpm = 72f + (kotlin.math.sin(System.currentTimeMillis() / 2000.0) * 4f).toFloat()
-                        val simTemp = 36.6f + (kotlin.math.cos(System.currentTimeMillis() / 4000.0) * 0.2f).toFloat()
-                        val simGsr = 45f + (kotlin.math.sin(System.currentTimeMillis() / 3000.0) * 3f).toFloat()
-                        processHeartRate(simBpm)
-                        synchronized(dataLock) {
-                            _sensorData.value = _sensorData.value.copy(
-                                bpm = simBpm,
-                                temperature = simTemp,
-                                gsr = simGsr,
-                                rmssd = 45f,
-                                sdnn = 50f,
-                                stressEstimate = simGsr,
-                                stressLabel = "Normal"
-                            )
-                        }
-                    } else if (currentBpm > 0f) {
+                    if (currentBpm > 0f) {
                         val rmssd = hrvCalculator.computeRmssd()
                         val sdnn = hrvCalculator.computeSdnn()
                         val stressUs = stressMapper.mapToStressUs(rmssd)

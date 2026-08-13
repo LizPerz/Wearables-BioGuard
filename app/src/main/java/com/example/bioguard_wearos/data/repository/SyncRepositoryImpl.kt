@@ -101,8 +101,7 @@ class SyncRepositoryImpl @Inject constructor(
             }.getOrDefault(emptyList())
 
             val targetNodes = if (!trustedNodeId.isNullOrBlank()) {
-                val matched = allReachableMobileNodes.filter { it.id == trustedNodeId }
-                if (matched.isNotEmpty()) matched else allReachableMobileNodes
+                allReachableMobileNodes.filter { it.id == trustedNodeId }
             } else {
                 allReachableMobileNodes
             }
@@ -190,15 +189,15 @@ class SyncRepositoryImpl @Inject constructor(
                 temperaturaC = temperatura.toDouble(),
                 sudoracionGsr = gsr.toDouble(),
                 hrv = hrv.toDouble(),
-                spo2 = spo2?.toDouble(),
+                spo2 = spo2?.takeIf { it > 0f }?.toDouble(),
                 pasos = steps,
                 accelX = accelX?.toDouble(),
                 accelY = accelY?.toDouble(),
                 accelZ = accelZ?.toDouble(),
-                grasaCorporalPct = grasaPct?.toDouble(),
-                masaMuscularKg = masaMuscular?.toDouble(),
-                faseSueno = faseSueno,
-                glucosaEstimadaMgDl = glucosaEstimadaMgDl?.toDouble(),
+                grasaCorporalPct = grasaPct?.takeIf { it > 0f }?.toDouble(),
+                masaMuscularKg = masaMuscular?.takeIf { it > 0f }?.toDouble(),
+                faseSueno = faseSueno?.takeIf { it.isNotBlank() },
+                glucosaEstimadaMgDl = glucosaEstimadaMgDl?.takeIf { it > 0f }?.toDouble(),
                 timestamp = Instant.now().toString()
             )
             val jsonString = Json.encodeToString(PhoneReadingRequest.serializer(), request)

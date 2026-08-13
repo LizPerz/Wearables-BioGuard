@@ -98,6 +98,18 @@ class DashboardViewModel @Inject constructor(
 
     suspend fun getTrustedMobileNodeId(): String? = preferences.getTrustedMobileNodeId()
 
+    fun unlinkPhone() {
+        viewModelScope.launch {
+            runCatching {
+                preferences.clearTrustedMobileNodeId()
+            }.onSuccess {
+                _uiState.update { it.copy(isPhonePaired = false, isPhoneConnected = false) }
+            }.onFailure { e ->
+                Log.w(TAG, "No se pudo desvincular el movil: ${e.message}")
+            }
+        }
+    }
+
     suspend fun createPairingPayload(deviceName: String, deviceId: String, nodeId: String): String {
         val issuedAt = System.currentTimeMillis() / 1000L
         val nonce = WearablePairingQr.newNonce()
