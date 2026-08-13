@@ -9,17 +9,17 @@ data class SensorData(
     val stressEstimate: Float = 0f,
     val stressLabel: String = "",
     val steps: Int? = null,
-    val spo2: Float = 98f,
+    val spo2: Float = 0f,
     val accelX: Float = 0f,
     val accelY: Float = 0f,
     val accelZ: Float = 0f,
-    val bodyFatPercent: Float = 18.5f,
-    val muscleMassKg: Float = 32.0f,
+    val bodyFatPercent: Float = 0f,
+    val muscleMassKg: Float = 0f,
     val sweatLossMl: Float = 0f,
-    val sleepStage: String = "DESPIERTO",
-    val sleepApneaRisk: String = "NORMAL",
+    val sleepStage: String = "",
+    val sleepApneaRisk: String = "",
     val ihrnEventCount: Int = 0,
-    val estimatedGlucoseMgDl: Float = 95.0f
+    val estimatedGlucoseMgDl: Float = 0f
 ) {
     val hrFraction: Float
         get() = if (bpm > 0f) ((bpm - HR_MIN) / (HR_MAX - HR_MIN)).coerceIn(0f, 1f) else 0.05f

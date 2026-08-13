@@ -146,6 +146,7 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
     var showPairingQr by remember { mutableStateOf(false) }
     var pairingPayload by remember { mutableStateOf("") }
+    var showUnlinkConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -244,7 +245,7 @@ fun DashboardScreen(
                 MetricPill(
                     icon = { Icon(Icons.Rounded.WaterDrop, null, Modifier.size(14.dp), tint = metricIconTint(stressStatus)) },
                     value = if (stressAvailable) String.format(Locale.ROOT, "%.0f", sensorData.stressEstimate) else "--",
-                    label = "estres est.",
+                    label = "indice ESTRES",
                     fillFraction = (sensorData.stressEstimate / 100f).coerceIn(0f, 1f),
                     gradientColors = metricColors(stressStatus),
                     contentWidth = contentWidth,
@@ -264,22 +265,24 @@ fun DashboardScreen(
 
             item {
                 val glucoseVal = sensorData.estimatedGlucoseMgDl
+                val glucoseAvailable = glucoseVal > 0f
                 val glucoseStatus = when {
+                    !glucoseAvailable -> MetricStatus.UNAVAILABLE
                     glucoseVal > 140f -> MetricStatus.CRITICAL
                     glucoseVal < 70f -> MetricStatus.MODERATE
                     else -> MetricStatus.OPTIMAL
                 }
                 MetricPill(
                     icon = { Text("🩸", fontSize = 12.sp) },
-                    value = String.format(Locale.ROOT, "%.0f", glucoseVal),
+                    value = if (glucoseAvailable) String.format(Locale.ROOT, "%.0f", glucoseVal) else "--",
                     label = "mg/dL Glucosa",
-                    fillFraction = ((glucoseVal - 70f) / 150f).coerceIn(0.05f, 1f),
+                    fillFraction = if (glucoseAvailable) ((glucoseVal - 70f) / 150f).coerceIn(0.05f, 1f) else 0.05f,
                     gradientColors = metricColors(glucoseStatus),
                     contentWidth = contentWidth,
                     onClick = {
                         viewModel.showDetailDialog(
                             "Glucosa Estimada",
-                            String.format(Locale.ROOT, "%.0f", glucoseVal),
+                            if (glucoseAvailable) String.format(Locale.ROOT, "%.0f", glucoseVal) else "No disponible",
                             "mg/dL",
                             DetailIcon.DROPS
                         )
@@ -359,28 +362,38 @@ fun DashboardScreen(
             }
 
             item {
-                CompactButton(
-                    onClick = {
-                        scope.launch {
-                            val nodeClient = runCatching { Wearable.getNodeClient(context) }.getOrNull()
-                            val installId = viewModel.getInstallId()
-                            val localNode = runCatching { nodeClient?.localNode?.await() }
-                                .onFailure { Log.w(TAG, "No se pudo resolver nodo local para QR") }
-                                .getOrNull()
-                            pairingPayload = viewModel.createPairingPayload(
-                                deviceName = localNode?.displayName?.ifBlank { "BioGuard Wearable" }
-                                    ?: "BioGuard Wearable",
-                                deviceId = installId,
-                                nodeId = localNode?.id ?: installId
-                            )
-                            showPairingQr = true
-                        }
-                    },
-                    contentWidth = contentWidth,
-                    containerColor = BioGuardPrimary,
-                    icon = { Icon(Icons.Rounded.Bluetooth, null, Modifier.size(14.dp), tint = BioGuardBackground) },
-                    text = "QR VINCULAR"
-                )
+                if (uiState.isPhonePaired) {
+                    CompactButton(
+                        onClick = { showUnlinkConfirm = true },
+                        contentWidth = contentWidth,
+                        containerColor = BioGuardMetricWarning,
+                        icon = { Icon(Icons.Rounded.Bluetooth, null, Modifier.size(14.dp), tint = BioGuardBackground) },
+                        text = "DESVINCULAR MOVIL"
+                    )
+                } else {
+                    CompactButton(
+                        onClick = {
+                            scope.launch {
+                                val nodeClient = runCatching { Wearable.getNodeClient(context) }.getOrNull()
+                                val installId = viewModel.getInstallId()
+                                val localNode = runCatching { nodeClient?.localNode?.await() }
+                                    .onFailure { Log.w(TAG, "No se pudo resolver nodo local para QR") }
+                                    .getOrNull()
+                                pairingPayload = viewModel.createPairingPayload(
+                                    deviceName = localNode?.displayName?.ifBlank { "BioGuard Wearable" }
+                                        ?: "BioGuard Wearable",
+                                    deviceId = installId,
+                                    nodeId = localNode?.id ?: installId
+                                )
+                                showPairingQr = true
+                            }
+                        },
+                        contentWidth = contentWidth,
+                        containerColor = BioGuardPrimary,
+                        icon = { Icon(Icons.Rounded.Bluetooth, null, Modifier.size(14.dp), tint = BioGuardBackground) },
+                        text = "QR VINCULAR"
+                    )
+                }
             }
         }
     }
@@ -407,6 +420,87 @@ fun DashboardScreen(
             payload = pairingPayload,
             onDismiss = { showPairingQr = false }
         )
+    }
+
+    if (showUnlinkConfirm) {
+        UnlinkConfirmDialog(
+            onDismiss = { showUnlinkConfirm = false },
+            onConfirm = {
+                showUnlinkConfirm = false
+                viewModel.unlinkPhone()
+            }
+        )
+    }
+}
+
+@Composable
+private fun UnlinkConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BioGuardBackground.copy(alpha = 0.94f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "¿Desvincular este móvil?",
+                    color = BioGuardOnSurface,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Dejarás de enviar datos al teléfono actual",
+                    color = BioGuardOnSurfaceVariant,
+                    fontSize = 9.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .width(80.dp)
+                            .height(30.dp),
+                        shape = RoundedCornerShape(15.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BioGuardOnSurfaceVariant)
+                    ) {
+                        Text(
+                            text = "CANCELAR",
+                            color = BioGuardBackground,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier
+                            .width(100.dp)
+                            .height(30.dp),
+                        shape = RoundedCornerShape(15.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BioGuardError)
+                    ) {
+                        Text(
+                            text = "SÍ, DESVINCULAR",
+                            color = BioGuardOnSurface,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

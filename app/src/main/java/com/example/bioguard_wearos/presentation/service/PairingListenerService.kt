@@ -31,6 +31,9 @@ class PairingListenerService : WearableListenerService() {
                 val nonce = request.optString("nonce")
                 val preferences = BioGuardPreferences(applicationContext)
                 val trustedNodeId = preferences.getTrustedMobileNodeId()
+                require(!isPairingBlockedByExclusivity(trustedNodeId, event.sourceNodeId)) {
+                    "El reloj ya esta vinculado a otro telefono; desvincula desde el reloj para cambiar de movil"
+                }
                 if (trustedNodeId != event.sourceNodeId) {
                     if (nonce.isNotBlank() && !nonce.startsWith("auto-pair")) {
                         preferences.consumePairingChallenge(nonce)
@@ -66,3 +69,6 @@ class PairingListenerService : WearableListenerService() {
         const val MAX_PAIRING_MESSAGE_BYTES = 1024
     }
 }
+
+internal fun isPairingBlockedByExclusivity(trustedNodeId: String?, sourceNodeId: String): Boolean =
+    !trustedNodeId.isNullOrBlank() && trustedNodeId != sourceNodeId
