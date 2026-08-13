@@ -569,7 +569,12 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 return@launch
             }
             val trustedNodeId = preferences.getTrustedMobileNodeId()
-            if (trustedNodeId.isNullOrBlank() || trustedNodeId != event.sourceNodeId) {
+            if (trustedNodeId.isNullOrBlank()) {
+                // Primer contacto: se adopta el nodo del teléfono real y se acepta el mensaje,
+                // igual que se hace al enviar lecturas al móvil.
+                Log.w(TAG, "Nodo movil no configurado; se adopta ${event.sourceNodeId}")
+                preferences.saveTrustedMobileNodeId(event.sourceNodeId)
+            } else if (trustedNodeId != event.sourceNodeId) {
                 Log.w(TAG, "Mensaje rechazado desde un nodo movil no vinculado")
                 return@launch
             }
