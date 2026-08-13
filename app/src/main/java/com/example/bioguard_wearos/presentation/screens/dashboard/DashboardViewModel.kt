@@ -12,6 +12,7 @@ import com.example.bioguard_wearos.domain.risk.BiometricInput
 import com.example.bioguard_wearos.domain.risk.RiskAssessment
 import com.example.bioguard_wearos.domain.risk.RiskLevel
 import com.example.bioguard_wearos.domain.risk.TriggerSource
+import com.example.bioguard_wearos.domain.usecase.StartSensorsUseCase
 import com.example.bioguard_wearos.util.WearablePairingQr
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,7 +48,8 @@ class DashboardViewModel @Inject constructor(
     private val sensorDataRepository: SensorDataRepository,
     private val preferences: BioGuardPreferences,
     private val syncRepository: SyncRepository,
-    private val alertManager: AlertManager
+    private val alertManager: AlertManager,
+    private val startSensorsUseCase: StartSensorsUseCase
 ) : ViewModel() {
 
     companion object {
@@ -72,6 +74,15 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             val firstRun = preferences.isFirstRun.first()
             _uiState.update { it.copy(isFirstRun = firstRun) }
+        }
+        // Garantiza que la captura de sensores esté activa mientras el dashboard
+        // está en pantalla (idempotente: startSensors ignora arranques duplicados).
+        viewModelScope.launch {
+            try {
+                startSensorsUseCase()
+            } catch (e: Exception) {
+                Log.w(TAG, "No se pudieron iniciar sensores desde el dashboard: ${e.message}")
+            }
         }
     }
 

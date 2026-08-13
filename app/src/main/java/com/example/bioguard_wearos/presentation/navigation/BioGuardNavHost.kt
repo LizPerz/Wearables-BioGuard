@@ -65,9 +65,7 @@ fun BioGuardNavHost(
                             popUpTo(Screen.Splash) { inclusive = true }
                         }
                     } else {
-                        if (sensorsEnabled) {
-                            startSensors()
-                        }
+                        startSensors()
                         navController.navigate(Screen.Dashboard) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -93,9 +91,7 @@ fun BioGuardNavHost(
                 onDismiss = {},
                 onConfirmed = {
                     viewModel.confirmAndStart()
-                    if (sensorsEnabled) {
-                        startSensors()
-                    }
+                    startSensors()
                     navController.navigate(Screen.Dashboard) {
                         popUpTo(0) { inclusive = true }
                     }
