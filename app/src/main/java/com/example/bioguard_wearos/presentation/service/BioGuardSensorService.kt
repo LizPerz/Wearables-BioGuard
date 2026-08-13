@@ -172,7 +172,12 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             Log.d(TAG, "startForeground exitoso (tipo HEALTH)")
         } catch (e: Exception) {
             Log.e(TAG, "startForeground falló [${e::class.simpleName}]: ${e.message}")
-            Log.w(TAG, "El servicio será detenido por el sistema sin foreground")
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification())
+                Log.w(TAG, "startForeground con fallback sin tipo ejecutado")
+            } catch (e2: Exception) {
+                Log.e(TAG, "startForeground falló incluso sin tipo: ${e2.message}")
+            }
         }
 
         serviceScope.launch {
@@ -230,7 +235,11 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private fun startRiskEvaluationLoop() {
         serviceScope.launch {
             while (true) {
-                evaluateRisk()
+                try {
+                    evaluateRisk()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error evaluando riesgo: ${e.message}")
+                }
                 delay(RISK_EVAL_INTERVAL_MS)
             }
         }
@@ -275,9 +284,13 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private fun observeSensorData() {
         serviceScope.launch {
             sensorDataRepository.sensorData.collect { data ->
-                _currentData.value = data
-                updateNotification()
-                sendLiveTelemetryIfDue(data)
+                try {
+                    _currentData.value = data
+                    updateNotification()
+                    sendLiveTelemetryIfDue(data)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error procesando dato de sensores en el servicio: ${e.message}")
+                }
             }
         }
     }
@@ -504,7 +517,11 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private fun startHeartbeatLoop() {
         serviceScope.launch {
             while (true) {
-                enviarHeartbeat()
+                try {
+                    enviarHeartbeat()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error enviando heartbeat: ${e.message}")
+                }
                 delay(HEARTBEAT_INTERVAL_MS)
             }
         }
