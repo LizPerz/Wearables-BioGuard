@@ -100,8 +100,12 @@ class SyncRepositoryImpl @Inject constructor(
                 }
             }.getOrDefault(emptyList())
 
-            val targetNodes = if (!trustedNodeId.isNullOrBlank()) {
-                allReachableMobileNodes.filter { it.id == trustedNodeId }
+            // Exclusividad con auto-reparacion: si el movil vinculado esta alcanzable solo se
+            // envia a el; si el id guardado quedo desactualizado (reinstalacion, cambio de node id)
+            // se envia a los alcanzables y se reaprende el nodo para no bloquear la sincronizacion.
+            val matched = allReachableMobileNodes.filter { it.id == trustedNodeId }
+            val targetNodes = if (!trustedNodeId.isNullOrBlank() && matched.isNotEmpty()) {
+                matched
             } else {
                 allReachableMobileNodes
             }
@@ -110,8 +114,9 @@ class SyncRepositoryImpl @Inject constructor(
                 Log.w(TAG, "No reachable BioGuard mobile capability for $path")
                 return false
             }
+            val shouldRelearnTrust = trustedNodeId.isNullOrBlank() || matched.isEmpty()
             for (node in targetNodes) {
-                if (trustedNodeId.isNullOrBlank()) {
+                if (shouldRelearnTrust) {
                     preferences.saveTrustedMobileNodeId(node.id)
                 }
                 messageClient.sendMessage(node.id, path, payloadJson.toByteArray(Charsets.UTF_8))

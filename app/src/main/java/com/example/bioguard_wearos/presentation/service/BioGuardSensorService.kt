@@ -31,6 +31,7 @@ import com.example.bioguard_wearos.domain.risk.RiskThresholdController
 import com.example.bioguard_wearos.domain.risk.RiskThresholds
 import com.example.bioguard_wearos.domain.risk.TriggerSource
 import com.example.bioguard_wearos.domain.security.WearableCommandValidator
+import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -48,6 +49,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.util.Locale
 import javax.inject.Inject
 
@@ -616,10 +618,29 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 Log.w(TAG, "Nodo movil no configurado; se adopta ${event.sourceNodeId}")
                 preferences.saveTrustedMobileNodeId(event.sourceNodeId)
             } else if (trustedNodeId != event.sourceNodeId) {
-                Log.w(TAG, "Mensaje rechazado desde un nodo movil no vinculado")
-                return@launch
+                // Si el nodo guardado ya no esta alcanzable (p.ej. se reinstalo la app movil y
+                // el node id cambio), se reaprende el nuevo nodo para no bloquear la sincronizacion.
+                if (isTrustedMobileNodeReachable(trustedNodeId)) {
+                    Log.w(TAG, "Mensaje rechazado desde un nodo movil no vinculado")
+                    return@launch
+                }
+                Log.w(TAG, "Nodo vinculado no alcanzable; se reaprende ${event.sourceNodeId}")
+                preferences.saveTrustedMobileNodeId(event.sourceNodeId)
             }
             handleTrustedMessage(event)
+        }
+    }
+
+    private suspend fun isTrustedMobileNodeReachable(trustedNodeId: String): Boolean {
+        return try {
+            val nodes = Wearable.getCapabilityClient(this)
+                .getCapability("bioguard_mobile", CapabilityClient.FILTER_REACHABLE)
+                .await()
+                .nodes
+            nodes.any { it.id == trustedNodeId && it.isNearby }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo verificar alcanzabilidad del nodo vinculado: ${e.message}")
+            false
         }
     }
 

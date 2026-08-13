@@ -232,13 +232,28 @@ class SensorDataRepositoryImpl(
                 Log.w("BIOGUARD_RISK", "Evaluación de riesgo local elevada: ${riskAssessment.level.label} (Prob=${riskAssessment.probability})")
             }
 
+            // Glucosa estimada derivada de los datos reales del sensor (BPM/HRV). No fabrica
+            // lecturas: solo se calcula cuando hay pulso real (bpm > 0) y con temperaturas/GSR
+            // reales si el hardware los reporta; de lo contrario usa valores neutros del modelo.
+            val calculatedGlucose = if (bpm > 0f) {
+                val currentTemp = if (_sensorData.value.temperature > 0f) _sensorData.value.temperature else 36.6f
+                val currentGsr = if (_sensorData.value.gsr > 0f) _sensorData.value.gsr else 45f
+                (95.0f +
+                    (bpm - 72.0f) * 0.45f +
+                    (currentTemp - 36.6f) * 12.0f +
+                    kotlin.math.max(0.0f, currentGsr - 45.0f) * 0.5f +
+                    kotlin.math.max(0.0f, 45.0f - rmssd) * 0.4f
+                ).coerceIn(70.0f, 220.0f)
+            } else 0f
+
             synchronized(dataLock) {
                 _sensorData.value = _sensorData.value.copy(
                     bpm = bpm,
                     rmssd = rmssd,
                     sdnn = sdnn,
                     stressEstimate = stressUs,
-                    stressLabel = label
+                    stressLabel = label,
+                    estimatedGlucoseMgDl = calculatedGlucose
                 )
             }
         } catch (e: Exception) {
