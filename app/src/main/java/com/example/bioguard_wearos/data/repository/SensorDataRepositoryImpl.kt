@@ -168,6 +168,17 @@ class SensorDataRepositoryImpl(
         startHeartRateMeasure()
         startStepCounter()
         temperatureProvider.start()
+        if (!temperatureProvider.isAvailable) {
+            _sensorAvailability.value = _sensorAvailability.value.copy(
+                temperatureAvailable = false,
+                statusMessage = "Temperatura no disponible: sin sensor de piel/IR"
+            )
+        } else {
+            _sensorAvailability.value = _sensorAvailability.value.copy(
+                temperatureAvailable = true,
+                statusMessage = null
+            )
+        }
         startHrvUpdater()
         startPeriodicSave()
     }

@@ -135,7 +135,7 @@ class DashboardViewModel @Inject constructor(
                     triggerSource = TriggerSource.SIGMOID,
                     input = BiometricInput(bpm = current.bpm, temperature = current.temperature, estresPct = current.estresPct, bmi = 25f)
                 )
-                alertManager.triggerAlert(assessment)
+                alertManager.triggerAlert(assessment, force = true)
                 val result = syncRepository.enviarAlerta(
                     tipoAlerta = "PANIC_BUTTON",
                     mensaje = "Alerta manual activada desde el reloj",
