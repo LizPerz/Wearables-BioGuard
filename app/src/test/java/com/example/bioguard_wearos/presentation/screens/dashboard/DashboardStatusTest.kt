@@ -22,10 +22,10 @@ class DashboardStatusTest {
     }
 
     @Test
-    fun gsrDistingueAusenteOptimoModeradoYCritico() {
-        assertEquals(MetricStatus.UNAVAILABLE, resolveGsrStatus(0f))
-        assertEquals(MetricStatus.OPTIMAL, resolveGsrStatus(20f))
-        assertEquals(MetricStatus.MODERATE, resolveGsrStatus(50f))
-        assertEquals(MetricStatus.CRITICAL, resolveGsrStatus(80f))
+    fun estresDistingueAusenteOptimoModeradoYCritico() {
+        assertEquals(MetricStatus.UNAVAILABLE, resolveStressStatus(0f))
+        assertEquals(MetricStatus.OPTIMAL, resolveStressStatus(20f))
+        assertEquals(MetricStatus.MODERATE, resolveStressStatus(60f))
+        assertEquals(MetricStatus.CRITICAL, resolveStressStatus(90f))
     }
 }

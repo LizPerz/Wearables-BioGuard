@@ -10,8 +10,8 @@ class SensorAvailabilityTest {
         val availability = SensorAvailability()
         assertEquals(false, availability.heartRateAvailable)
         assertEquals(false, availability.temperatureAvailable)
-        assertEquals(false, availability.gsrDisponible)
-        assertEquals(true, availability.gsrEsEstimado)
+        assertEquals(false, availability.estresDisponible)
+        assertEquals(true, availability.estresEsEstimado)
         assertEquals(false, availability.heartRateOffBody)
         assertEquals(null, availability.statusMessage)
     }
@@ -21,14 +21,14 @@ class SensorAvailabilityTest {
         val availability = SensorAvailability(
             heartRateAvailable = true,
             temperatureAvailable = false,
-            gsrDisponible = true,
+            estresDisponible = true,
             heartRateOffBody = true,
             statusMessage = "Coloca el reloj"
         )
         assertEquals(true, availability.heartRateAvailable)
         assertEquals(false, availability.temperatureAvailable)
-        assertEquals(true, availability.gsrDisponible)
-        assertEquals(false, availability.gsrEsEstimado)
+        assertEquals(true, availability.estresDisponible)
+        assertEquals(false, availability.estresEsEstimado)
         assertEquals(true, availability.heartRateOffBody)
         assertEquals("Coloca el reloj", availability.statusMessage)
     }

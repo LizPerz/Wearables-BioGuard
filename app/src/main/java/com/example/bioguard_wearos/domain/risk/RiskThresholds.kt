@@ -6,7 +6,7 @@ data class RiskThresholds(
     val criticalTemp: Float = 39.0f,
     val moderateBpm: Float = 105f,
     val moderateTemp: Float = 37.8f,
-    val moderateGsr: Float = 65f
+    val moderateStress: Float = 60f
 ) {
     companion object {
         val DEFAULT = RiskThresholds()

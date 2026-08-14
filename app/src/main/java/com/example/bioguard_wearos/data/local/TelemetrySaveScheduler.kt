@@ -40,14 +40,14 @@ class TelemetrySaveScheduler(
         val assessment = RiskAssessment.fromBiometrics(
             bpm = data.bpm,
             temp = data.temperature,
-            gsr = data.gsr
+            estresPct = data.estresPct
         )
 
         val entity = BiometricReadingEntity(
             timestamp = System.currentTimeMillis(),
             bpm = data.bpm,
             temperature = data.temperature,
-            gsr = data.gsr,
+            gsr = data.estresPct,
             hrvRmssd = data.rmssd,
             hrvSdnn = data.sdnn,
             stressEstimate = data.stressEstimate,

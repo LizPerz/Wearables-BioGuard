@@ -10,14 +10,14 @@ data class RiskAssessment(
         fun fromBiometrics(
             bpm: Float,
             temp: Float,
-            gsr: Float,
+            estresPct: Float,
             thresholds: RiskThresholds = RiskThresholds.DEFAULT
         ): RiskAssessment {
-            val input = BiometricInput(bpm = bpm, temperature = temp, gsr = gsr)
+            val input = BiometricInput(bpm = bpm, temperature = temp, estresPct = estresPct)
             val moderateSignals = listOf(
                 bpm >= thresholds.moderateBpm,
                 temp >= thresholds.moderateTemp,
-                gsr >= thresholds.moderateGsr
+                estresPct >= thresholds.moderateStress
             ).count { it }
 
             return when {

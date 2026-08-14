@@ -51,7 +51,7 @@ class PeriodicSaveSQLiteTest {
     @Test
     fun `saveOnce persists all fields to SQLite correctly`() = runBlocking {
         val sensorData = MutableStateFlow(
-            SensorData(bpm = 85f, temperature = 36.5f, gsr = 30f)
+            SensorData(bpm = 85f, temperature = 36.5f, estresPct = 30f)
         )
         val scheduler = TelemetrySaveScheduler(repository, sensorData)
 
@@ -69,7 +69,7 @@ class PeriodicSaveSQLiteTest {
     @Test
     fun `saveOnce evaluates CRITICAL_HIGH risk and stores it in SQLite`() = runBlocking {
         val sensorData = MutableStateFlow(
-            SensorData(bpm = 120f, temperature = 38f, gsr = 90f)
+            SensorData(bpm = 120f, temperature = 38f, estresPct = 90f)
         )
         val scheduler = TelemetrySaveScheduler(repository, sensorData)
 
@@ -82,7 +82,7 @@ class PeriodicSaveSQLiteTest {
     @Test
     fun `saveOnce evaluates OPTIMAL risk and stores it in SQLite`() = runBlocking {
         val sensorData = MutableStateFlow(
-            SensorData(bpm = 70f, temperature = 36.3f, gsr = 25f)
+            SensorData(bpm = 70f, temperature = 36.3f, estresPct = 25f)
         )
         val scheduler = TelemetrySaveScheduler(repository, sensorData)
 
@@ -105,7 +105,7 @@ class PeriodicSaveSQLiteTest {
     @Test
     fun `multiple saveOnce calls accumulate records in SQLite`() = runBlocking {
         val sensorData = MutableStateFlow(
-            SensorData(bpm = 88f, temperature = 36.8f, gsr = 42f)
+            SensorData(bpm = 88f, temperature = 36.8f, estresPct = 42f)
         )
         val scheduler = TelemetrySaveScheduler(repository, sensorData)
 
@@ -119,7 +119,7 @@ class PeriodicSaveSQLiteTest {
     @Test
     fun `periodic scheduler saves to SQLite on each interval`() = runBlocking {
         val sensorData = MutableStateFlow(
-            SensorData(bpm = 75f, temperature = 36.4f, gsr = 22f)
+            SensorData(bpm = 75f, temperature = 36.4f, estresPct = 22f)
         )
         val scheduler = TelemetrySaveScheduler(repository, sensorData, intervalMs = 1_000L)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -159,7 +159,7 @@ class PeriodicSaveSQLiteTest {
     @Test
     fun `stop prevents further saves to SQLite`() = runBlocking {
         val sensorData = MutableStateFlow(
-            SensorData(bpm = 80f, temperature = 36.5f, gsr = 25f)
+            SensorData(bpm = 80f, temperature = 36.5f, estresPct = 25f)
         )
         val scheduler = TelemetrySaveScheduler(repository, sensorData, intervalMs = 10_000L)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

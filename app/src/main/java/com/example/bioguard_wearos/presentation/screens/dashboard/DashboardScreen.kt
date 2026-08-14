@@ -98,10 +98,10 @@ internal fun resolveTempStatus(temp: Float): MetricStatus = when {
     else -> MetricStatus.CRITICAL
 }
 
-internal fun resolveGsrStatus(gsr: Float): MetricStatus = when {
-    gsr <= 0f -> MetricStatus.UNAVAILABLE
-    gsr < 40f -> MetricStatus.OPTIMAL
-    gsr in 40f..65f -> MetricStatus.MODERATE
+internal fun resolveStressStatus(estresPct: Float): MetricStatus = when {
+    estresPct <= 0f -> MetricStatus.UNAVAILABLE
+    estresPct < 50f -> MetricStatus.OPTIMAL
+    estresPct in 50f..80f -> MetricStatus.MODERATE
     else -> MetricStatus.CRITICAL
 }
 
@@ -169,9 +169,9 @@ fun DashboardScreen(
     val sensorData = uiState.sensorData
     val bpmStatus = resolveBpmStatus(sensorData.bpm)
     val tempStatus = resolveTempStatus(sensorData.temperature)
-    val stressAvailable = sensorData.rmssd > 0f || sensorData.gsr > 0f
+    val stressAvailable = sensorData.rmssd > 0f || sensorData.estresPct > 0f
     val stressStatus = if (stressAvailable) {
-        resolveGsrStatus(sensorData.stressEstimate)
+        resolveStressStatus(sensorData.estresPct)
     } else {
         MetricStatus.UNAVAILABLE
     }
@@ -244,15 +244,15 @@ fun DashboardScreen(
             item {
                 MetricPill(
                     icon = { Icon(Icons.Rounded.WaterDrop, null, Modifier.size(14.dp), tint = metricIconTint(stressStatus)) },
-                    value = if (stressAvailable) String.format(Locale.ROOT, "%.0f", sensorData.stressEstimate) else "--",
+                    value = if (stressAvailable) String.format(Locale.ROOT, "%.0f", sensorData.estresPct) else "--",
                     label = "indice ESTRES",
-                    fillFraction = (sensorData.stressEstimate / 100f).coerceIn(0f, 1f),
+                    fillFraction = sensorData.estresFraction,
                     gradientColors = metricColors(stressStatus),
                     contentWidth = contentWidth,
                     onClick = {
                         viewModel.showDetailDialog(
                             "Estrés (HRV)",
-                            if (stressAvailable) String.format(Locale.ROOT, "%.0f", sensorData.stressEstimate) else "No disponible",
+                            if (stressAvailable) String.format(Locale.ROOT, "%.0f", sensorData.estresPct) else "No disponible",
                             "indice",
                             DetailIcon.DROPS,
                             hrvRmssd = sensorData.rmssd,

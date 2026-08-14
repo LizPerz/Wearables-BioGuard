@@ -66,7 +66,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         private const val NOTIFICATION_MIN_INTERVAL_MS = 5000L
         private const val BPM_SIGNIFICANT_CHANGE = 5f
         private const val TEMP_SIGNIFICANT_CHANGE = 0.3f
-        private const val GSR_SIGNIFICANT_CHANGE = 3f
+        private const val ESTRES_SIGNIFICANT_CHANGE = 3f
         private const val RISK_EVAL_INTERVAL_MS = 3000L
         private const val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L
         private const val LIVE_TELEMETRY_INTERVAL_DEFAULT_MS = 30_000L
@@ -113,7 +113,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private var lastNotificationTimestamp = 0L
     private var lastNotifiedBpm = 0f
     private var lastNotifiedTemp = 0f
-    private var lastNotifiedGsr = 0f
+    private var lastNotifiedEstres = 0f
     private var lastRiskEvalTimestamp = 0L
     private var cachedBmi = DEFAULT_BMI
     private val batteryThresholdsNotified = mutableSetOf<Int>()
@@ -280,7 +280,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         val assessment = RiskAssessment.fromBiometrics(
             bpm = data.bpm,
             temp = data.temperature,
-            gsr = data.stressEstimate,
+            estresPct = data.estresPct,
             thresholds = riskThresholdController.current
         )
         lastRiskAssessment = assessment
@@ -332,7 +332,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             syncRepository.enviarLecturaLive(
                 bpm = data.bpm,
                 temperatura = data.temperature,
-                estresPct = data.stressEstimate,
+                estresPct = data.estresPct,
                 hrv = data.rmssd,
                 steps = data.steps,
                 spo2 = data.spo2,
@@ -361,7 +361,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                     BiometricReadingEntity(
                         bpm = data.bpm,
                         temperature = data.temperature,
-                        gsr = data.gsr,
+                        gsr = data.estresPct,
                         hrvRmssd = data.rmssd,
                         hrvSdnn = data.sdnn,
                         stressEstimate = data.stressEstimate,
@@ -438,8 +438,8 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
 
         val bpmChanged = kotlin.math.abs(data.bpm - lastNotifiedBpm) >= BPM_SIGNIFICANT_CHANGE
         val tempChanged = kotlin.math.abs(data.temperature - lastNotifiedTemp) >= TEMP_SIGNIFICANT_CHANGE
-        val gsrChanged = kotlin.math.abs(data.stressEstimate - lastNotifiedGsr) >= GSR_SIGNIFICANT_CHANGE
-        val significantChange = bpmChanged || tempChanged || gsrChanged
+        val estresChanged = kotlin.math.abs(data.estresPct - lastNotifiedEstres) >= ESTRES_SIGNIFICANT_CHANGE
+        val significantChange = bpmChanged || tempChanged || estresChanged
 
         if (timeSinceLast < NOTIFICATION_MIN_INTERVAL_MS && !significantChange) {
             return
@@ -448,11 +448,11 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         lastNotificationTimestamp = now
         lastNotifiedBpm = data.bpm
         lastNotifiedTemp = data.temperature
-        lastNotifiedGsr = data.stressEstimate
+        lastNotifiedEstres = data.estresPct
 
         val bpm = String.format(Locale.US, "%.0f", data.bpm)
         val temp = String.format(Locale.US, "%.1f", data.temperature)
-        val estres = String.format(Locale.US, "%.0f", data.stressEstimate)
+        val estres = String.format(Locale.US, "%.0f", data.estresPct)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("BioGuard Activo")
@@ -472,7 +472,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         val data = _currentData.value
         val bpm = String.format(Locale.US, "%.0f", data.bpm)
         val temp = String.format(Locale.US, "%.1f", data.temperature)
-        val estres = String.format(Locale.US, "%.0f", data.stressEstimate)
+        val estres = String.format(Locale.US, "%.0f", data.estresPct)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("BioGuard Activo")
@@ -577,7 +577,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             if (data.bpm > 0f) add("pulso")
             if (data.temperature > 0f) add("temperatura_corporal")
             if (data.rmssd > 0f || data.sdnn > 0f) add("hrv")
-            if (data.stressEstimate > 0f) add("estres_estimado")
+            if (data.estresPct > 0f) add("estres_estimado")
             if (data.steps != null) add("pasos")
         }
         val bateria = obtenerBateria() ?: -1
@@ -653,9 +653,9 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                     val command = JSONObject(json)
                     val bpm = command.optDouble("bpm", 0.0).toFloat()
                     val temp = command.optDouble("temperatura", 0.0).toFloat()
-                    val gsr = command.optDouble("gsr", 0.0).toFloat()
+                    val estresPct = command.optDouble("estresPct", 0.0).toFloat()
                     val probability = command.optDouble("probability", 0.0).toFloat()
-                    if (!WearableCommandValidator.isValidAlert(bpm, temp, gsr, probability)) {
+                    if (!WearableCommandValidator.isValidAlert(bpm, temp, estresPct, probability)) {
                         Log.w(TAG, "Comando de alerta rechazado por valores invalidos")
                         return
                     }
@@ -664,7 +664,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         level = RiskLevel.CRITICAL_HIGH,
                         probability = probability,
                         triggerSource = TriggerSource.SIGMOID,
-                        input = BiometricInput(bpm = bpm, temperature = temp, gsr = gsr, bmi = cachedBmi)
+                        input = BiometricInput(bpm = bpm, temperature = temp, estresPct = estresPct, bmi = cachedBmi)
                     )
                     notifier.notifyRiskLevel(RiskLevel.CRITICAL_HIGH, bpm, temp)
                     alertManager.triggerAlert(assessment)
@@ -737,7 +737,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         criticalTemp = command.optDouble("criticalTemp", RiskThresholds.DEFAULT.criticalTemp.toDouble()).toFloat(),
                         moderateBpm = command.optDouble("moderateBpm", RiskThresholds.DEFAULT.moderateBpm.toDouble()).toFloat(),
                         moderateTemp = command.optDouble("moderateTemp", RiskThresholds.DEFAULT.moderateTemp.toDouble()).toFloat(),
-                        moderateGsr = command.optDouble("moderateGsr", RiskThresholds.DEFAULT.moderateGsr.toDouble()).toFloat()
+                        moderateStress = command.optDouble("moderateStress", RiskThresholds.DEFAULT.moderateStress.toDouble()).toFloat()
                     )
                     if (!WearableCommandValidator.isValidThresholds(thresholds)) {
                         Log.w(TAG, "Umbrales de riesgo rechazados por valores invalidos")

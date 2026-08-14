@@ -54,7 +54,7 @@ class BioGuardPreferences @Inject constructor(
     private val riskCriticalTempKey = floatPreferencesKey("risk_critical_temp")
     private val riskModerateBpmKey = floatPreferencesKey("risk_moderate_bpm")
     private val riskModerateTempKey = floatPreferencesKey("risk_moderate_temp")
-    private val riskModerateGsrKey = floatPreferencesKey("risk_moderate_gsr")
+    private val riskModerateStressKey = floatPreferencesKey("risk_moderate_stress")
 
     val isFirstRun: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[isFirstRunKey] ?: true
@@ -168,7 +168,7 @@ class BioGuardPreferences @Inject constructor(
             criticalTemp = prefs[riskCriticalTempKey] ?: RiskThresholds.DEFAULT.criticalTemp,
             moderateBpm = prefs[riskModerateBpmKey] ?: RiskThresholds.DEFAULT.moderateBpm,
             moderateTemp = prefs[riskModerateTempKey] ?: RiskThresholds.DEFAULT.moderateTemp,
-            moderateGsr = prefs[riskModerateGsrKey] ?: RiskThresholds.DEFAULT.moderateGsr
+            moderateStress = prefs[riskModerateStressKey] ?: RiskThresholds.DEFAULT.moderateStress
         )
     }
 
@@ -179,7 +179,7 @@ class BioGuardPreferences @Inject constructor(
             prefs[riskCriticalTempKey] = thresholds.criticalTemp
             prefs[riskModerateBpmKey] = thresholds.moderateBpm
             prefs[riskModerateTempKey] = thresholds.moderateTemp
-            prefs[riskModerateGsrKey] = thresholds.moderateGsr
+            prefs[riskModerateStressKey] = thresholds.moderateStress
         }
     }
 
