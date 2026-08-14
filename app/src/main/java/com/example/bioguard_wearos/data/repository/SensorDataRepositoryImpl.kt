@@ -19,8 +19,8 @@ import androidx.health.services.client.data.MeasureCapabilities
 import com.example.bioguard_wearos.data.hrv.HrvCalculator
 import com.example.bioguard_wearos.data.hrv.StressMapper
 import com.example.bioguard_wearos.data.local.TelemetrySaveScheduler
+import com.example.bioguard_wearos.data.sensor.SamsungTemperatureProvider
 import com.example.bioguard_wearos.data.sensor.SensorManagerTemperatureProvider
-import com.example.bioguard_wearos.data.sensor.TemperatureProvider
 import com.example.bioguard_wearos.domain.model.SensorAvailability
 import com.example.bioguard_wearos.domain.model.SensorData
 import com.example.bioguard_wearos.domain.repository.BiometricReadingRepository
@@ -68,19 +68,27 @@ class SensorDataRepositoryImpl(
         TelemetrySaveScheduler(it, _sensorData)
     }
 
-    private val temperatureProvider: TemperatureProvider = SensorManagerTemperatureProvider(context) { temp ->
+    // Temperatura de piel REAL en Galaxy Watch5+ vía Samsung Health Sensor SDK.
+    private val samsungTemperatureProvider = SamsungTemperatureProvider(context, ::reportTemperature)
+
+    // Fallback universal vía SensorManager (solo funciona en hardware que lo exponga
+    // sin permisos de firma Samsung, p. ej. termómetros estándar o emuladores).
+    private val sensorManagerTemperatureProvider = SensorManagerTemperatureProvider(context, ::reportTemperature)
+
+    init {
+        samsungTemperatureProvider.bindToHeartRate(_sensorData)
+        sensorManagerTemperatureProvider.bindToHeartRate(_sensorData)
+    }
+
+    private fun reportTemperature(temp: Float) {
         if (temp > 0f) {
             _sensorData.value = _sensorData.value.copy(temperature = temp)
             _sensorAvailability.value = _sensorAvailability.value.copy(
                 temperatureAvailable = true,
                 statusMessage = null
             )
-            Log.d("BIOGUARD", "Temperatura infrarroja: $temp C")
+            Log.d("BIOGUARD", "Temperatura real reportada: $temp C")
         }
-    }
-
-    init {
-        temperatureProvider.bindToHeartRate(_sensorData)
     }
 
     @Volatile private var heartRateStarted = false
@@ -167,8 +175,17 @@ class SensorDataRepositoryImpl(
         Log.d("BIOGUARD", "heartRateSensor HW: ${sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE)?.name ?: "NO DISPONIBLE"}")
         startHeartRateMeasure()
         startStepCounter()
-        temperatureProvider.start()
-        if (!temperatureProvider.isAvailable) {
+        startTemperatureCapture()
+        startHrvUpdater()
+        startPeriodicSave()
+    }
+
+    private fun startTemperatureCapture() {
+        // Fuente primaria en Galaxy Watch5+: Samsung Health Sensor SDK (temp de piel real).
+        // Fallback universal: SensorManager (ambient/temperature estándar o propietario).
+        samsungTemperatureProvider.start()
+        sensorManagerTemperatureProvider.start()
+        if (!samsungTemperatureProvider.isAvailable && !sensorManagerTemperatureProvider.isAvailable) {
             _sensorAvailability.value = _sensorAvailability.value.copy(
                 temperatureAvailable = false,
                 statusMessage = "Temperatura no disponible: sin sensor de piel/IR"
@@ -179,8 +196,6 @@ class SensorDataRepositoryImpl(
                 statusMessage = null
             )
         }
-        startHrvUpdater()
-        startPeriodicSave()
     }
 
     private fun hasHeartRatePermission(): Boolean {
@@ -201,7 +216,8 @@ class SensorDataRepositoryImpl(
         stepCounterSensor?.let { sensorManager?.unregisterListener(this, it) }
         stepCounterSensor = null
         stepCounterBaseline = null
-        temperatureProvider.stop()
+        samsungTemperatureProvider.stop()
+        sensorManagerTemperatureProvider.stop()
         heartRateStarted = false
         hrvUpdaterJob?.cancel()
         hrvUpdaterJob = null

@@ -110,6 +110,11 @@ class MainActivity : ComponentActivity() {
             permissionsToRequest.add(READ_BODY_TEMPERATURE_PERMISSION)
         }
 
+        // Permiso de Health Connect para la temperatura de piel del Samsung Health Sensor SDK.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            permissionsToRequest.add(READ_SKIN_TEMPERATURE_PERMISSION)
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -151,5 +156,6 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val READ_HEART_RATE_PERMISSION = "android.permission.health.READ_HEART_RATE"
         private const val READ_BODY_TEMPERATURE_PERMISSION = "android.permission.health.READ_BODY_TEMPERATURE"
+        private const val READ_SKIN_TEMPERATURE_PERMISSION = "android.permission.health.READ_SKIN_TEMPERATURE"
     }
 }

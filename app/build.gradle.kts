@@ -124,6 +124,10 @@ dependencies {
     implementation(libs.sqlcipher.android)
     implementation(libs.androidx.sqlite)
 
+    // Samsung Health Sensor SDK (samsung-health-sensor-api.aar) — temperatura de piel real
+    // en Galaxy Watch5+. El AAR se descarga del portal de Samsung y se coloca en app/libs/.
+    implementation(fileTree("libs") { include("*.aar") })
+
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.android)
