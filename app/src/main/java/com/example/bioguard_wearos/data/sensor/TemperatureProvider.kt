@@ -138,7 +138,8 @@ class SensorManagerTemperatureProvider(
             Log.i(TAG, "Sensor de temperatura registrado: ${sensor.name} (vendor=${sensor.vendor}, type=${sensor.type})")
         } else {
             _isAvailable = false
-            Log.e(TAG, "No se pudo registrar el listener del sensor ${sensor.name}")
+            Log.e(TAG, "No se pudo registrar el listener del sensor ${sensor.name}; reintentando...")
+            startRediscoveryLoop()
         }
     }
 
