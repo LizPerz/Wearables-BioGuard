@@ -225,7 +225,7 @@ class SensorDataRepositoryImpl(
             val riskAssessment = RiskAssessment.fromBiometrics(
                 bpm = bpm,
                 temp = _sensorData.value.temperature,
-                gsr = _sensorData.value.gsr,
+                estresPct = _sensorData.value.estresPct,
                 thresholds = riskThresholdController.current
             )
             if (riskAssessment.level.isElevated) {
@@ -233,15 +233,15 @@ class SensorDataRepositoryImpl(
             }
 
             // Glucosa estimada derivada de los datos reales del sensor (BPM/HRV). No fabrica
-            // lecturas: solo se calcula cuando hay pulso real (bpm > 0) y con temperaturas/GSR
+            // lecturas: solo se calcula cuando hay pulso real (bpm > 0) y con temperaturas/estrés (%)
             // reales si el hardware los reporta; de lo contrario usa valores neutros del modelo.
             val calculatedGlucose = if (bpm > 0f) {
                 val currentTemp = if (_sensorData.value.temperature > 0f) _sensorData.value.temperature else 36.6f
-                val currentGsr = if (_sensorData.value.gsr > 0f) _sensorData.value.gsr else 45f
+                val currentEstres = if (_sensorData.value.estresPct > 0f) _sensorData.value.estresPct else 45f
                 (95.0f +
                     (bpm - 72.0f) * 0.45f +
                     (currentTemp - 36.6f) * 12.0f +
-                    kotlin.math.max(0.0f, currentGsr - 45.0f) * 0.5f +
+                    kotlin.math.max(0.0f, currentEstres - 45.0f) * 0.5f +
                     kotlin.math.max(0.0f, 45.0f - rmssd) * 0.4f
                 ).coerceIn(70.0f, 220.0f)
             } else 0f
@@ -251,6 +251,7 @@ class SensorDataRepositoryImpl(
                     bpm = bpm,
                     rmssd = rmssd,
                     sdnn = sdnn,
+                    estresPct = stressUs,
                     stressEstimate = stressUs,
                     stressLabel = label,
                     estimatedGlucoseMgDl = calculatedGlucose
@@ -279,6 +280,7 @@ class SensorDataRepositoryImpl(
                             _sensorData.value = _sensorData.value.copy(
                                 rmssd = rmssd,
                                 sdnn = sdnn,
+                                estresPct = stressUs,
                                 stressEstimate = stressUs,
                                 stressLabel = label
                             )

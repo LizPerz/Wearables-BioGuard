@@ -69,7 +69,7 @@ fun CriticalAlertScreen(
     CriticalAlertContent(
         bpm = uiState.bpm,
         temperature = uiState.temperature,
-        gsr = uiState.gsr,
+        estresPct = uiState.estresPct,
         probability = uiState.probability,
         countdownSeconds = uiState.countdownSeconds,
         isCountdownActive = uiState.isCountdownActive,
@@ -88,7 +88,7 @@ fun CriticalAlertScreen(
 private fun CriticalAlertContent(
     bpm: Float,
     temperature: Float,
-    gsr: Float,
+    estresPct: Float,
     probability: Float,
     countdownSeconds: Int,
     isCountdownActive: Boolean,
@@ -175,7 +175,7 @@ private fun CriticalAlertContent(
             ) {
                 VitalColumn("BPM", String.format(Locale.US, "%.0f", bpm), labelSize, valueSize)
                 VitalColumn("Temp", String.format(Locale.US, "%.1f", temperature), labelSize, valueSize)
-                VitalColumn("GSR", String.format(Locale.US, "%.0f", gsr), labelSize, valueSize)
+                VitalColumn("Estrés %", String.format(Locale.US, "%.0f", estresPct), labelSize, valueSize)
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -292,7 +292,7 @@ private fun CriticalAlertScreenPreview() {
     )
     BioGuard_WearOsTheme {
         CriticalAlertContent(
-            bpm = 125f, temperature = 34.5f, gsr = 92f, probability = 0.92f,
+            bpm = 125f, temperature = 34.5f, estresPct = 92f, probability = 0.92f,
             countdownSeconds = 45, isCountdownActive = true, pulseAlpha = pulseAlpha,
             helpRequested = false, helpSent = false,
             onDismiss = {}, onHelp = {}

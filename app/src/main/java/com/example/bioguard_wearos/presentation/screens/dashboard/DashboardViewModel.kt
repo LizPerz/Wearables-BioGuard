@@ -62,7 +62,7 @@ class DashboardViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             sensorDataRepository.sensorData.collect { data ->
-                Log.d(TAG, "SensorData recibido: BPM=${data.bpm}, Temp=${data.temperature}, GSR=${data.gsr}")
+                Log.d(TAG, "SensorData recibido: BPM=${data.bpm}, Temp=${data.temperature}, Estrés=${data.estresPct}%")
                 _uiState.update { it.copy(sensorData = data) }
             }
         }
@@ -133,7 +133,7 @@ class DashboardViewModel @Inject constructor(
                     level = RiskLevel.CRITICAL_HIGH,
                     probability = 1.0f,
                     triggerSource = TriggerSource.SIGMOID,
-                    input = BiometricInput(bpm = current.bpm, temperature = current.temperature, gsr = current.stressEstimate, bmi = 25f)
+                    input = BiometricInput(bpm = current.bpm, temperature = current.temperature, estresPct = current.estresPct, bmi = 25f)
                 )
                 alertManager.triggerAlert(assessment)
                 val result = syncRepository.enviarAlerta(
@@ -142,7 +142,7 @@ class DashboardViewModel @Inject constructor(
                     nivelRiesgo = "CRITICAL_HIGH",
                     bpm = current.bpm,
                     temperatura = current.temperature,
-                    estresPct = current.stressEstimate
+                    estresPct = current.estresPct
                 )
                 _uiState.update {
                     it.copy(

@@ -42,15 +42,15 @@ class SensorDataTest {
     }
 
     @Test
-    fun `gsrFraction calculates correctly`() {
-        val data = SensorData(gsr = 50f)
-        assertEquals(0.5f, data.gsrFraction, 0.001f)
+    fun `estresFraction calculates correctly`() {
+        val data = SensorData(estresPct = 50f)
+        assertEquals(0.5f, data.estresFraction, 0.001f)
     }
 
     @Test
-    fun `gsrFraction is 0_05 when GSR is 0`() {
-        val data = SensorData(gsr = 0f)
-        assertEquals(0.05f, data.gsrFraction, 0.001f)
+    fun `estresFraction is 0_05 when estres is 0`() {
+        val data = SensorData(estresPct = 0f)
+        assertEquals(0.05f, data.estresFraction, 0.001f)
     }
 
     @Test
@@ -58,7 +58,7 @@ class SensorDataTest {
         val data = SensorData()
         assertEquals(0f, data.bpm)
         assertEquals(0f, data.temperature)
-        assertEquals(0f, data.gsr)
+        assertEquals(0f, data.estresPct)
         assertEquals(0f, data.rmssd)
         assertEquals(0f, data.sdnn)
         assertEquals("", data.stressLabel)
@@ -69,7 +69,7 @@ class SensorDataTest {
         val data = SensorData(
             bpm = 72f,
             temperature = 36.5f,
-            gsr = 35f,
+            estresPct = 35f,
             rmssd = 28.5f,
             sdnn = 32.1f,
             stressLabel = "Estr\u00e9s Moderado"
@@ -89,12 +89,12 @@ class SensorDataTest {
     }
 
     @Test
-    fun `gsrFraction is clamped between 0 and 1`() {
-        val dataHigh = SensorData(gsr = 150f)
-        assertEquals(1f, dataHigh.gsrFraction, 0.001f)
+    fun `estresFraction is clamped between 0 and 1`() {
+        val dataHigh = SensorData(estresPct = 150f)
+        assertEquals(1f, dataHigh.estresFraction, 0.001f)
 
-        val dataLow = SensorData(gsr = -5f)
-        assertEquals(0.05f, dataLow.gsrFraction, 0.001f)
+        val dataLow = SensorData(estresPct = -5f)
+        assertEquals(0.05f, dataLow.estresFraction, 0.001f)
     }
 
     @Test
@@ -102,7 +102,7 @@ class SensorDataTest {
         val data = SensorData()
         assertEquals(0.05f, data.hrFraction, 0.001f)
         assertEquals(0.05f, data.tempFraction, 0.001f)
-        assertEquals(0.05f, data.gsrFraction, 0.001f)
+        assertEquals(0.05f, data.estresFraction, 0.001f)
     }
 
     @Test
@@ -111,6 +111,6 @@ class SensorDataTest {
         assertEquals(200f, SensorData.HR_MAX)
         assertEquals(35f, SensorData.TEMP_MIN)
         assertEquals(38f, SensorData.TEMP_MAX)
-        assertEquals(100f, SensorData.GSR_MAX)
+        assertEquals(100f, SensorData.ESTRES_MAX)
     }
 }
