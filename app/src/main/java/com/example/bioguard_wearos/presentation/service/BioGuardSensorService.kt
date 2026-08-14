@@ -32,6 +32,7 @@ import com.example.bioguard_wearos.domain.risk.RiskThresholds
 import com.example.bioguard_wearos.domain.risk.TriggerSource
 import com.example.bioguard_wearos.domain.security.WearableCommandValidator
 import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -49,12 +50,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import java.util.Locale
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener {
+class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener,
+    CapabilityClient.OnCapabilityChangedListener {
 
     companion object {
         private const val TAG = "BIOGUARD_RD_BG"
@@ -71,11 +75,14 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         private const val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L
         private const val LIVE_TELEMETRY_INTERVAL_DEFAULT_MS = 30_000L
         private const val LIVE_TELEMETRY_MIN_MS = 15_000L
-        private const val FLUSH_INTERVAL_MS = 60_000L
+        private const val LIVE_TELEMETRY_RETRY_MS = 10_000L
+        private const val FLUSH_INTERVAL_MS = 30_000L
+        private const val RECONNECT_SYNC_DELAY_MS = 2_000L
         private const val BATTERY_CHECK_INTERVAL_MS = 5 * 60 * 1000L
         private val BATTERY_THRESHOLDS = intArrayOf(30, 15, 5)
         private const val DEFAULT_BMI = 25f
         private const val PAIR_PATH = "/bioguard/pair"
+        private const val MOBILE_CAPABILITY = "bioguard_mobile"
     }
 
     inner class LocalBinder : Binder() {
@@ -122,6 +129,9 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private var lastLiveTelemetryTimestamp = 0L
     @Volatile
     private var liveTelemetryIntervalMs = LIVE_TELEMETRY_INTERVAL_DEFAULT_MS
+    @Volatile
+    private var lastLiveTelemetryFailed = false
+    private val syncMutex = Mutex()
     private lateinit var notifier: WearableAlertNotifier
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -151,6 +161,15 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             Log.d(TAG, "MessageClient listener registrado")
         } catch (e: Exception) {
             Log.e(TAG, "Error registrando MessageClient listener: ${e.message}")
+        }
+
+        try {
+            Wearable.getCapabilityClient(this)
+                .addListener(this, MOBILE_CAPABILITY)
+                .addOnSuccessListener { Log.d(TAG, "Capability listener registrado (sync por reconexión)") }
+                .addOnFailureListener { Log.e(TAG, "Error registrando capability listener: ${it.message}") }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error registrando capability listener: ${e.message}")
         }
     }
 
@@ -202,9 +221,47 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         } catch (e: Exception) {
             Log.w(TAG, "Error removiendo MessageClient listener: ${e.message}")
         }
+        try {
+            Wearable.getCapabilityClient(this)
+                .removeListener(this)
+                .addOnSuccessListener { Log.d(TAG, "Capability listener removido") }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error removiendo capability listener: ${e.message}")
+        }
         sensorDataRepository.stopSensors()
         releaseWakeLock()
         serviceScope.cancel()
+    }
+
+    override fun onCapabilityChanged(capabilityInfo: CapabilityInfo) {
+        val reachable = capabilityInfo.nodes.any { it.isNearby }
+        Log.d(TAG, "Cambio en capability '${capabilityInfo.name}': nodos=${capabilityInfo.nodes.size}, movilAlcanzable=$reachable")
+        if (reachable) {
+            triggerReconnectSync()
+        }
+    }
+
+    private fun triggerReconnectSync() {
+        serviceScope.launch {
+            // Pequeño margen para que la capability del móvil se propague tras reconectarse.
+            delay(RECONNECT_SYNC_DELAY_MS)
+            syncMutex.withLock {
+                try {
+                    val result = syncRepository.syncPendingReadings()
+                    result.onSuccess { count ->
+                        if (count > 0) {
+                            Log.d(TAG, "Sincronización inmediata por reconexión: $count lecturas pendientes enviadas")
+                        } else {
+                            Log.d(TAG, "Reconexión detectada, sin lecturas pendientes por sincronizar")
+                        }
+                    }.onFailure {
+                        Log.d(TAG, "Sync por reconexión falló (aún sin móvil alcanzable): ${it.message}")
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "Error en sync por reconexión: ${e.message}")
+                }
+            }
+        }
     }
 
     private fun loadPatientBmi() {
@@ -290,15 +347,19 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 if (lastNotifiedRiskLevel != RiskLevel.CRITICAL_HIGH) {
                     lastNotifiedRiskLevel = RiskLevel.CRITICAL_HIGH
                     Log.w(TAG, "Pico de riesgo CRÍTICO detectado (inicio de episodio, umbrales: ${riskThresholdController.current})")
-                    notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature, data.estimatedGlucoseMgDl)
-                    if (!alertManager.alertState.value.isActive) {
-                        alertManager.triggerAlert(assessment)
+                    if (alertManager.triggerAlert(assessment)) {
+                        notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature, data.estimatedGlucoseMgDl)
+                    } else {
+                        Log.d(TAG, "Alerta crítica local suprimida por cooldown de alerta")
                     }
                 }
             }
             RiskLevel.MODERATE_HIGH -> {
-                if (lastNotifiedRiskLevel == null || lastNotifiedRiskLevel == RiskLevel.CRITICAL_HIGH) {
+                if ((lastNotifiedRiskLevel == null || lastNotifiedRiskLevel == RiskLevel.CRITICAL_HIGH) &&
+                    alertManager.shouldNotify(assessment.level)
+                ) {
                     lastNotifiedRiskLevel = RiskLevel.MODERATE_HIGH
+                    alertManager.recordNotification(assessment.level)
                     Log.d(TAG, "Pico de riesgo MODERADO detectado (inicio de episodio): ${assessment.level.label}")
                     notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature, data.estimatedGlucoseMgDl)
                 }
@@ -329,7 +390,9 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private fun sendLiveTelemetryIfDue(data: SensorData) {
         if (data.bpm <= 0f) return
         val now = System.currentTimeMillis()
-        if (now - lastLiveTelemetryTimestamp < liveTelemetryIntervalMs) return
+        val fastRetry = lastLiveTelemetryFailed &&
+            now - lastLiveTelemetryTimestamp >= LIVE_TELEMETRY_RETRY_MS
+        if (!fastRetry && now - lastLiveTelemetryTimestamp < liveTelemetryIntervalMs) return
         lastLiveTelemetryTimestamp = now
         serviceScope.launch {
             syncRepository.enviarLecturaLive(
@@ -347,7 +410,13 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                 faseSueno = data.sleepStage,
                 glucosaEstimadaMgDl = data.estimatedGlucoseMgDl,
                 nivelRiesgo = lastRiskAssessment?.level?.name ?: RiskLevel.OPTIMAL.name
-            ).onFailure {
+            ).onSuccess {
+                if (lastLiveTelemetryFailed) {
+                    lastLiveTelemetryFailed = false
+                    Log.d(TAG, "Telemetría en vivo recuperada; intervalo normal restaurado")
+                }
+            }.onFailure {
+                lastLiveTelemetryFailed = true
                 Log.d(TAG, "Live telemetry deferred to durable sync: ${it.message}")
             }
         }
@@ -560,15 +629,17 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         serviceScope.launch {
             while (true) {
                 delay(FLUSH_INTERVAL_MS)
-                try {
-                    val result = syncRepository.syncPendingReadings()
-                    result.onSuccess { count ->
-                        if (count > 0) {
-                            Log.d(TAG, "Sincronización periódica vació $count lecturas pendientes de Room al móvil")
+                syncMutex.withLock {
+                    try {
+                        val result = syncRepository.syncPendingReadings()
+                        result.onSuccess { count ->
+                            if (count > 0) {
+                                Log.d(TAG, "Sincronización periódica vació $count lecturas pendientes de Room al móvil")
+                            }
                         }
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Error en ciclo de sincronización duradera: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.d(TAG, "Error en ciclo de sincronización duradera: ${e.message}")
                 }
             }
         }
@@ -637,7 +708,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private suspend fun isTrustedMobileNodeReachable(trustedNodeId: String): Boolean {
         return try {
             val nodes = Wearable.getCapabilityClient(this)
-                .getCapability("bioguard_mobile", CapabilityClient.FILTER_REACHABLE)
+                .getCapability(MOBILE_CAPABILITY, CapabilityClient.FILTER_REACHABLE)
                 .await()
                 .nodes
             nodes.any { it.id == trustedNodeId && it.isNearby }
@@ -669,8 +740,11 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
                         triggerSource = TriggerSource.SIGMOID,
                         input = BiometricInput(bpm = bpm, temperature = temp, estresPct = estresPct, bmi = cachedBmi)
                     )
-                    notifier.notifyRiskLevel(RiskLevel.CRITICAL_HIGH, bpm, temp)
-                    alertManager.triggerAlert(assessment)
+                    if (alertManager.triggerAlert(assessment)) {
+                        notifier.notifyRiskLevel(RiskLevel.CRITICAL_HIGH, bpm, temp)
+                    } else {
+                        Log.d(TAG, "Alerta del móvil suprimida por cooldown de alerta")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando comando de alerta del teléfono", e)
                 }

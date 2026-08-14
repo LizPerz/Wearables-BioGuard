@@ -45,13 +45,7 @@ class SensorManagerTemperatureProvider(
 
     override fun start() {
         stop()
-        // Prioridad 1: sensor de temperatura infrarroja/ambiente (el que expone el Galaxy Watch).
-        tempSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
-        if (tempSensor == null) {
-            // Prioridad 2: sensor de temperatura del dispositivo (deprecado desde API 14).
-            @Suppress("DEPRECATION")
-            tempSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_TEMPERATURE)
-        }
+        tempSensor = discoverTemperatureSensor()
         if (tempSensor == null) {
             _isAvailable = false
             Log.i("BIOGUARD", "Sensor de temperatura no disponible en este dispositivo")
@@ -75,7 +69,52 @@ class SensorManagerTemperatureProvider(
             }
         }
         sensorManager?.registerListener(tempListener, tempSensor, SensorManager.SENSOR_DELAY_NORMAL)
-        Log.i("BIOGUARD", "Sensor de temperatura infrarroja registrado: ${tempSensor?.name}")
+        Log.i("BIOGUARD", "Sensor de temperatura registrado: ${tempSensor?.name} (vendor=${tempSensor?.vendor})")
+    }
+
+    /**
+     * Descubre un sensor de temperatura en el dispositivo.
+     * Prioridades:
+     *  1) Sensor de temperatura ambiente estándar (TYPE_AMBIENT_TEMPERATURE).
+     *  2) Sensor de temperatura del dispositivo (TYPE_TEMPERATURE, deprecado desde API 14).
+     *  3) Sensores propietarios expuestos por fabricantes (p. ej. Samsung BioActive, termómetro
+     *     infrarrojo de piel) que usan tipos no estándar pero se identifican por nombre/vendor.
+     */
+    private fun discoverTemperatureSensor(): Sensor? {
+        val sm = sensorManager ?: return null
+
+        val ambient = sm.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
+        if (ambient != null) return ambient
+
+        @Suppress("DEPRECATION")
+        val deviceTemp = sm.getDefaultSensor(Sensor.TYPE_TEMPERATURE)
+        if (deviceTemp != null) return deviceTemp
+
+        // Fallback: barrer todos los sensores buscando uno de temperatura propietario.
+        val keywords = listOf(
+            "temperature", "temp", "therm", "skin", "infrared", "ir", "calor", "piel"
+        )
+        val candidates = sm.getSensorList(Sensor.TYPE_ALL).filter { sensor ->
+            sensor.type >= Sensor.TYPE_DEVICE_PRIVATE_BASE ||
+                keywords.any { it in sensor.name.lowercase() || it in sensor.vendor.lowercase() }
+        }
+        if (candidates.isEmpty()) return null
+
+        val chosen = candidates.maxByOrNull { scoreTemperatureSensor(it) }
+        Log.d("BIOGUARD", "Sensor de temperatura propietario detectado: ${chosen?.name} (vendor=${chosen?.vendor}, type=${chosen?.type})")
+        return chosen
+    }
+
+    private fun scoreTemperatureSensor(sensor: Sensor): Int {
+        val name = sensor.name.lowercase()
+        val vendor = sensor.vendor.lowercase()
+        var score = 0
+        if (name.contains("skin") || name.contains("piel") || name.contains("infrared") || name.contains("ir")) score += 100
+        if (name.contains("therm") || name.contains("temperature") || name.contains("temp")) score += 80
+        if (name.contains("ambient") || name.contains("ambiente")) score += 40
+        if (sensor.type >= Sensor.TYPE_DEVICE_PRIVATE_BASE) score += 20
+        if (vendor.contains("samsung") || vendor.contains("maxim") || vendor.contains("ti")) score += 10
+        return score
     }
 
     override fun stop() {
