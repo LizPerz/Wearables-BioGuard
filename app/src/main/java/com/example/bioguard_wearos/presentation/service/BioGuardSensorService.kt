@@ -280,7 +280,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         val assessment = RiskAssessment.fromBiometrics(
             bpm = data.bpm,
             temp = data.temperature,
-            gsr = data.gsr,
+            gsr = data.stressEstimate,
             thresholds = riskThresholdController.current
         )
         lastRiskAssessment = assessment
@@ -332,7 +332,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
             syncRepository.enviarLecturaLive(
                 bpm = data.bpm,
                 temperatura = data.temperature,
-                gsr = data.gsr,
+                estresPct = data.stressEstimate,
                 hrv = data.rmssd,
                 steps = data.steps,
                 spo2 = data.spo2,
@@ -438,7 +438,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
 
         val bpmChanged = kotlin.math.abs(data.bpm - lastNotifiedBpm) >= BPM_SIGNIFICANT_CHANGE
         val tempChanged = kotlin.math.abs(data.temperature - lastNotifiedTemp) >= TEMP_SIGNIFICANT_CHANGE
-        val gsrChanged = kotlin.math.abs(data.gsr - lastNotifiedGsr) >= GSR_SIGNIFICANT_CHANGE
+        val gsrChanged = kotlin.math.abs(data.stressEstimate - lastNotifiedGsr) >= GSR_SIGNIFICANT_CHANGE
         val significantChange = bpmChanged || tempChanged || gsrChanged
 
         if (timeSinceLast < NOTIFICATION_MIN_INTERVAL_MS && !significantChange) {
@@ -448,15 +448,15 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         lastNotificationTimestamp = now
         lastNotifiedBpm = data.bpm
         lastNotifiedTemp = data.temperature
-        lastNotifiedGsr = data.gsr
+        lastNotifiedGsr = data.stressEstimate
 
         val bpm = String.format(Locale.US, "%.0f", data.bpm)
         val temp = String.format(Locale.US, "%.1f", data.temperature)
-        val gsr = String.format(Locale.US, "%.0f", data.gsr)
+        val estres = String.format(Locale.US, "%.0f", data.stressEstimate)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("BioGuard Activo")
-            .setContentText("BPM: $bpm | Temp: ${temp}\u00b0C | Estr\u00e9s: ${gsr}\u00b5S")
+            .setContentText("BPM: $bpm | Temp: ${temp}\u00b0C | Estr\u00e9s: ${estres}%")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .setSilent(true)
@@ -472,11 +472,11 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         val data = _currentData.value
         val bpm = String.format(Locale.US, "%.0f", data.bpm)
         val temp = String.format(Locale.US, "%.1f", data.temperature)
-        val gsr = String.format(Locale.US, "%.0f", data.gsr)
+        val estres = String.format(Locale.US, "%.0f", data.stressEstimate)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("BioGuard Activo")
-            .setContentText("BPM: $bpm | Temp: ${temp}\u00b0C | Estr\u00e9s: ${gsr}\u00b5S")
+            .setContentText("BPM: $bpm | Temp: ${temp}\u00b0C | Estr\u00e9s: ${estres}%")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .setSilent(true)

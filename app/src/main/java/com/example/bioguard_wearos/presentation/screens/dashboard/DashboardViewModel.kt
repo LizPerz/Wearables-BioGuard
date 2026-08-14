@@ -133,7 +133,7 @@ class DashboardViewModel @Inject constructor(
                     level = RiskLevel.CRITICAL_HIGH,
                     probability = 1.0f,
                     triggerSource = TriggerSource.SIGMOID,
-                    input = BiometricInput(bpm = current.bpm, temperature = current.temperature, gsr = current.gsr, bmi = 25f)
+                    input = BiometricInput(bpm = current.bpm, temperature = current.temperature, gsr = current.stressEstimate, bmi = 25f)
                 )
                 alertManager.triggerAlert(assessment)
                 val result = syncRepository.enviarAlerta(
@@ -142,7 +142,7 @@ class DashboardViewModel @Inject constructor(
                     nivelRiesgo = "CRITICAL_HIGH",
                     bpm = current.bpm,
                     temperatura = current.temperature,
-                    gsr = current.gsr
+                    estresPct = current.stressEstimate
                 )
                 _uiState.update {
                     it.copy(

@@ -135,7 +135,7 @@ class CriticalAlertViewModel @Inject constructor(
             val result = syncRepository.enviarEvento(
                 bpm = state.bpm,
                 temperatura = state.temperature,
-                gsr = state.gsr,
+                estresPct = state.gsr,
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 tipoEvento = "CRITICAL_ALERT",
                 descripcion = "Pico crítico detectado: P(Pico)=${state.probability}"
@@ -155,11 +155,11 @@ class CriticalAlertViewModel @Inject constructor(
         viewModelScope.launch {
             val result = syncRepository.enviarAlerta(
                 tipoAlerta = "CRITICAL_HYPOGLYCEMIA",
-                mensaje = "Alerta crítica: Pico crítico detectado. BPM=${state.bpm}, Temp=${state.temperature}°C, GSR=${state.gsr}µS",
+                mensaje = "Alerta crítica: Pico crítico detectado. BPM=${state.bpm}, Temp=${state.temperature}°C, Estrés=${state.gsr}%",
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 bpm = state.bpm,
                 temperatura = state.temperature,
-                gsr = state.gsr
+                estresPct = state.gsr
             )
             result.onSuccess {
                 Log.d(TAG, "Alerta enviada al servidor OK")
@@ -176,7 +176,7 @@ class CriticalAlertViewModel @Inject constructor(
             val eventResult = syncRepository.enviarEvento(
                 bpm = state.bpm,
                 temperatura = state.temperature,
-                gsr = state.gsr,
+                estresPct = state.gsr,
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 tipoEvento = "EMERGENCY_PROTOCOL",
                 descripcion = "Protocolo de emergencia activado. Usuario solicitó ayuda manualmente."
@@ -187,7 +187,7 @@ class CriticalAlertViewModel @Inject constructor(
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 bpm = state.bpm,
                 temperatura = state.temperature,
-                gsr = state.gsr
+                estresPct = state.gsr
             )
 
             val helpSent = eventResult.isSuccess || alertResult.isSuccess
@@ -211,7 +211,7 @@ class CriticalAlertViewModel @Inject constructor(
             syncRepository.enviarEvento(
                 bpm = state.bpm,
                 temperatura = state.temperature,
-                gsr = state.gsr,
+                estresPct = state.gsr,
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 tipoEvento = "EMERGENCY_PROTOCOL",
                 descripcion = "Protocolo de emergencia activado. Timer expirado."
@@ -222,7 +222,7 @@ class CriticalAlertViewModel @Inject constructor(
                 nivelRiesgo = RiskLevel.CRITICAL_HIGH.name,
                 bpm = state.bpm,
                 temperatura = state.temperature,
-                gsr = state.gsr
+                estresPct = state.gsr
             )
         }
     }

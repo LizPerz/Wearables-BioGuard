@@ -18,7 +18,7 @@ interface SyncRepository {
     suspend fun enviarLecturaLive(
         bpm: Float,
         temperatura: Float,
-        gsr: Float,
+        estresPct: Float,
         hrv: Float,
         steps: Int?,
         spo2: Float? = null,
@@ -48,7 +48,7 @@ interface SyncRepository {
     suspend fun enviarEvento(
         bpm: Float,
         temperatura: Float,
-        gsr: Float,
+        estresPct: Float,
         nivelRiesgo: String,
         tipoEvento: String,
         descripcion: String
@@ -60,7 +60,7 @@ interface SyncRepository {
         nivelRiesgo: String,
         bpm: Float,
         temperatura: Float,
-        gsr: Float
+        estresPct: Float
     ): Result<Unit>
 
     suspend fun sendDismissCommandToPhone(): Result<Unit>

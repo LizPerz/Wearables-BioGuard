@@ -22,7 +22,7 @@ import javax.inject.Singleton
 private data class PhoneReadingRequest(
     val pulsoBpm: Double,
     val temperaturaC: Double,
-    val sudoracionGsr: Double,
+    val estresPct: Double,
     val hrv: Double? = null,
     val spo2: Double? = null,
     val pasos: Int? = null,
@@ -41,7 +41,7 @@ private data class PhoneReadingRequest(
 private data class WatchEventDto(
     val bpm: Float,
     val temperatura: Float,
-    val sudoracionGsr: Float,
+    val estresPct: Float,
     val nivelRiesgo: String,
     val timestamp: Long,
     val tipoEvento: String,
@@ -56,7 +56,7 @@ private data class WatchAlertDto(
     val timestamp: Long,
     val bpm: Float,
     val temperatura: Float,
-    val sudoracionGsr: Float
+    val estresPct: Float
 )
 
 @Serializable
@@ -175,7 +175,7 @@ class SyncRepositoryImpl @Inject constructor(
     override suspend fun enviarLecturaLive(
         bpm: Float,
         temperatura: Float,
-        gsr: Float,
+        estresPct: Float,
         hrv: Float,
         steps: Int?,
         spo2: Float?,
@@ -192,7 +192,7 @@ class SyncRepositoryImpl @Inject constructor(
             val request = PhoneReadingRequest(
                 pulsoBpm = bpm.toDouble(),
                 temperaturaC = temperatura.toDouble(),
-                sudoracionGsr = gsr.toDouble(),
+                estresPct = estresPct.coerceIn(0f, 100f).toDouble(),
                 hrv = hrv.toDouble(),
                 spo2 = spo2?.takeIf { it > 0f }?.toDouble(),
                 pasos = steps,
@@ -261,7 +261,7 @@ class SyncRepositoryImpl @Inject constructor(
             val req = PhoneReadingRequest(
                 pulsoBpm = reading.bpm.toDouble(),
                 temperaturaC = reading.temperature.toDouble(),
-                sudoracionGsr = reading.gsr.toDouble(),
+                estresPct = reading.stressEstimate.coerceIn(0f, 100f).toDouble(),
                 hrv = reading.hrvRmssd.toDouble().takeIf { it > 0.0 },
                 pasos = reading.steps,
                 timestamp = Instant.ofEpochMilli(reading.timestamp).toString()
@@ -283,7 +283,7 @@ class SyncRepositoryImpl @Inject constructor(
     override suspend fun enviarEvento(
         bpm: Float,
         temperatura: Float,
-        gsr: Float,
+        estresPct: Float,
         nivelRiesgo: String,
         tipoEvento: String,
         descripcion: String
@@ -292,7 +292,7 @@ class SyncRepositoryImpl @Inject constructor(
             val dto = WatchEventDto(
                 bpm = bpm,
                 temperatura = temperatura,
-                sudoracionGsr = gsr,
+                estresPct = estresPct.coerceIn(0f, 100f),
                 nivelRiesgo = nivelRiesgo,
                 timestamp = System.currentTimeMillis(),
                 tipoEvento = tipoEvento,
@@ -319,7 +319,7 @@ class SyncRepositoryImpl @Inject constructor(
         nivelRiesgo: String,
         bpm: Float,
         temperatura: Float,
-        gsr: Float
+        estresPct: Float
     ): Result<Unit> {
         return try {
             val dto = WatchAlertDto(
@@ -329,7 +329,7 @@ class SyncRepositoryImpl @Inject constructor(
                 timestamp = System.currentTimeMillis(),
                 bpm = bpm,
                 temperatura = temperatura,
-                sudoracionGsr = gsr
+                estresPct = estresPct.coerceIn(0f, 100f)
             )
             val jsonString = Json.encodeToString(WatchAlertDto.serializer(), dto)
             priorityQueue.enqueue(
