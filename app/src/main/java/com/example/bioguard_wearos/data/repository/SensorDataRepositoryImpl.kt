@@ -68,7 +68,16 @@ class SensorDataRepositoryImpl(
         TelemetrySaveScheduler(it, _sensorData)
     }
 
-    private val temperatureProvider: TemperatureProvider = SensorManagerTemperatureProvider(context) { _ -> }
+    private val temperatureProvider: TemperatureProvider = SensorManagerTemperatureProvider(context) { temp ->
+        if (temp > 0f) {
+            _sensorData.value = _sensorData.value.copy(temperature = temp)
+            _sensorAvailability.value = _sensorAvailability.value.copy(
+                temperatureAvailable = true,
+                statusMessage = null
+            )
+            Log.d("BIOGUARD", "Temperatura infrarroja: $temp C")
+        }
+    }
 
     init {
         temperatureProvider.bindToHeartRate(_sensorData)

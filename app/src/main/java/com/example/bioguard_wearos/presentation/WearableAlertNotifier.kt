@@ -84,15 +84,21 @@ class WearableAlertNotifier(private val context: Context) {
             .build()
     }
 
-    fun notifyRiskLevel(level: RiskLevel, bpm: Float, temperatura: Float) {
+    fun notifyRiskLevel(level: RiskLevel, bpm: Float, temperatura: Float, glucosaMgDl: Float = 0f) {
         if (!level.isElevated) return
 
         val isCritical = level.isCritical
-        val title = if (isCritical) "⚠️ Alerta crítica — BioGuard" else "BioGuard: cambio detectado"
+        val pico = when (level) {
+            RiskLevel.CRITICAL_HIGH -> "PICO ALTO"
+            RiskLevel.MODERATE_HIGH -> "PICO MEDIO"
+            RiskLevel.OPTIMAL -> "PICO BAJO"
+        }
+        val title = if (isCritical) "⚠️ PICO ALTO — BioGuard" else "PICO MEDIO — BioGuard"
         val body = buildString {
-            append("BPM: ${bpm.toInt()}")
+            append("$pico detectado")
+            if (glucosaMgDl > 0f) append(" · Glucosa ~${glucosaMgDl.toInt()} mg/dL")
+            append("\nBPM: ${bpm.toInt()}")
             if (temperatura > 0f) append(" | Temp: ${"%.1f".format(temperatura)}°C")
-            append(" — ${level.name}")
         }
 
         val canPost = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||

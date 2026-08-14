@@ -117,7 +117,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
     private var lastRiskEvalTimestamp = 0L
     private var cachedBmi = DEFAULT_BMI
     private val batteryThresholdsNotified = mutableSetOf<Int>()
-    private var criticalEpisodeActive = false
+    private var lastNotifiedRiskLevel: RiskLevel? = null
     private var lastRiskAssessment: RiskAssessment? = null
     private var lastLiveTelemetryTimestamp = 0L
     @Volatile
@@ -287,24 +287,27 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
 
         when (assessment.level) {
             RiskLevel.CRITICAL_HIGH -> {
-                if (!criticalEpisodeActive && !alertManager.alertState.value.isActive) {
-                    criticalEpisodeActive = true
-                    Log.w(TAG, "Riesgo local CRÍTICO detectado (umbrales: ${riskThresholdController.current})")
-                    notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature)
-                    alertManager.triggerAlert(assessment)
+                if (lastNotifiedRiskLevel != RiskLevel.CRITICAL_HIGH) {
+                    lastNotifiedRiskLevel = RiskLevel.CRITICAL_HIGH
+                    Log.w(TAG, "Pico de riesgo CRÍTICO detectado (inicio de episodio, umbrales: ${riskThresholdController.current})")
+                    notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature, data.estimatedGlucoseMgDl)
+                    if (!alertManager.alertState.value.isActive) {
+                        alertManager.triggerAlert(assessment)
+                    }
                 }
             }
             RiskLevel.MODERATE_HIGH -> {
-                if (criticalEpisodeActive && !alertManager.alertState.value.isActive) {
-                    Log.d(TAG, "Riesgo local moderado detectado: ${assessment.level.label}")
+                if (lastNotifiedRiskLevel == null || lastNotifiedRiskLevel == RiskLevel.CRITICAL_HIGH) {
+                    lastNotifiedRiskLevel = RiskLevel.MODERATE_HIGH
+                    Log.d(TAG, "Pico de riesgo MODERADO detectado (inicio de episodio): ${assessment.level.label}")
+                    notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature, data.estimatedGlucoseMgDl)
                 }
-                notifier.notifyRiskLevel(assessment.level, data.bpm, data.temperature)
             }
             else -> {
-                if (criticalEpisodeActive && !alertManager.alertState.value.isActive) {
-                    Log.d(TAG, "Riesgo local normalizado, episodio crítico finalizado")
+                if (lastNotifiedRiskLevel != null) {
+                    Log.d(TAG, "Riesgo local normalizado, episodio finalizado")
                 }
-                criticalEpisodeActive = false
+                lastNotifiedRiskLevel = null
             }
         }
     }
@@ -441,7 +444,7 @@ class BioGuardSensorService : Service(), MessageClient.OnMessageReceivedListener
         val estresChanged = kotlin.math.abs(data.estresPct - lastNotifiedEstres) >= ESTRES_SIGNIFICANT_CHANGE
         val significantChange = bpmChanged || tempChanged || estresChanged
 
-        if (timeSinceLast < NOTIFICATION_MIN_INTERVAL_MS && !significantChange) {
+        if (timeSinceLast < NOTIFICATION_MIN_INTERVAL_MS || !significantChange) {
             return
         }
 

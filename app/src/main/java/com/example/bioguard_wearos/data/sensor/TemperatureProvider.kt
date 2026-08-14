@@ -31,6 +31,7 @@ class SensorManagerTemperatureProvider(
     private var tempListener: SensorEventListener? = null
     private var _isAvailable = false
     private var lastBpm = 70f
+    private var lastReportedTemp = 0f
 
     override val isAvailable: Boolean get() = _isAvailable
 
@@ -43,9 +44,38 @@ class SensorManagerTemperatureProvider(
     }
 
     override fun start() {
-        _isAvailable = false
-        // Ambient temperature is not body temperature and must not feed clinical alerts.
-        Log.i("BIOGUARD", "Body temperature unavailable; ambient sensor is intentionally not used")
+        stop()
+        // Prioridad 1: sensor de temperatura infrarroja/ambiente (el que expone el Galaxy Watch).
+        tempSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
+        if (tempSensor == null) {
+            // Prioridad 2: sensor de temperatura del dispositivo (deprecado desde API 14).
+            @Suppress("DEPRECATION")
+            tempSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_TEMPERATURE)
+        }
+        if (tempSensor == null) {
+            _isAvailable = false
+            Log.i("BIOGUARD", "Sensor de temperatura no disponible en este dispositivo")
+            return
+        }
+        _isAvailable = true
+        tempListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                event ?: return
+                val temp = event.values.firstOrNull() ?: return
+                if (temp <= 0f) return
+                // Se reporta solo ante cambios significativos para no saturar el flujo de datos.
+                if (kotlin.math.abs(temp - lastReportedTemp) >= 0.1f) {
+                    lastReportedTemp = temp
+                    onTemperatureChanged(temp)
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                // No-op.
+            }
+        }
+        sensorManager?.registerListener(tempListener, tempSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        Log.i("BIOGUARD", "Sensor de temperatura infrarroja registrado: ${tempSensor?.name}")
     }
 
     override fun stop() {
