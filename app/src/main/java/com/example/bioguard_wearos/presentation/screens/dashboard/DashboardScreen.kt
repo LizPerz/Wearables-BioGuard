@@ -227,7 +227,7 @@ fun DashboardScreen(
                     icon = { Icon(Icons.Rounded.Thermostat, null, Modifier.size(14.dp), tint = metricIconTint(tempStatus)) },
                     value = if (sensorData.temperature > 0f) String.format(Locale.ROOT, "%.1f", sensorData.temperature) else "--",
                     label = "°C",
-                    fillFraction = sensorData.tempFraction,
+                    fillFraction = sensorData.tempFraction.coerceAtLeast(0.25f),
                     gradientColors = metricColors(tempStatus),
                     contentWidth = contentWidth,
                     onClick = {
